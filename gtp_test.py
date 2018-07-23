@@ -1,13 +1,12 @@
-#from gtp import gtp
-
-cardinalities = {
-    'i': 2,
-    'j': 3,
-    'k': 4
-}
+from gtp import gtp
 
 gtp_spec = {
     'config': {
+        'cardinalities' : {
+            'i': 2,
+            'j': 3,
+            'k': 4
+        },
         'output' : 'gtp_test_output',
         'inputs' : [ 'gtp_input1', 'gtp_input2' ]
     },
@@ -17,14 +16,14 @@ gtp_spec = {
             'indices' : [ 'i', 'j' ],
         },
         {
-            'name' : 'gtp_input1',
+            'name' : 'gtp_test_input1',
             'indices' : [ 'i', 'k' ]
         },
         {
-            'name' : 'gtp_input2',
+            'name' : 'gtp_test_input2',
             'indices' :  [ 'j', 'k' ]
         }
     ]
 }
 
-# gtp(cardinalities, tensors)
+gtp(gtp_spec)
