@@ -27,7 +27,7 @@ def find_tensor_value(gtp_spec, input_tensor_name, full_tensor_index_values):
             return row['value']
     return None
 
-def gtp(gtp_spec):
+def gtp(spark, gtp_spec):
     
     # get all indices
     full_tensor_name = '_gtp_full_tensor'
@@ -95,10 +95,8 @@ def gtp(gtp_spec):
     #sc.stop()
 
     gctf_data_path = '/home/sprk/shared/gctf_data'
-    spark = SparkSession.builder.appName("gtp").getOrCreate()
     sc = spark.sparkContext
-
-    rdd = sc.parallelize(xrange(1,gtp_spec['tensors'][get_tensor_index(gtp_spec, '_gtp_full_tensor')]['numel']))
+    rdd = sc.parallelize(xrange(gtp_spec['tensors'][get_tensor_index(gtp_spec, '_gtp_full_tensor')]['numel']))
     for input_tensor_name in gtp_spec['config']['inputs']:
         tensor_config_index = get_tensor_index(gtp_spec, input_tensor_name)
         if 'dataframe' not in gtp_spec['tensors'][tensor_config_index]:
@@ -111,9 +109,7 @@ def gtp(gtp_spec):
         else:
             print('info: Not re-initializing %s' %input_tensor_name)
 
-    print rdd.map(mapfunc).collect()
-
-    spark.stop()
+    return rdd.map(mapfunc).collect()
 
 
 if __name__ == '__main__':
@@ -143,4 +139,6 @@ if __name__ == '__main__':
         ]
     }
 
-    gtp(gtp_spec)
+    spark = SparkSession.builder.appName("gtp").getOrCreate()
+    gtp(spark, gtp_spec)
+    spark.stop()
