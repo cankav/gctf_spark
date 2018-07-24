@@ -1,6 +1,6 @@
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
-import math
+from operator import add
 
 def get_tensor_index(gtp_spec, tensor_name):
     for tensor_index, tensor in enumerate(gtp_spec['tensors']):
@@ -15,17 +15,39 @@ def read_tensor_data(spark_session, tensor_name, cache=True, root_path='/home/sp
         tensor_data.cache()
     return tensor_data
 
-def find_tensor_value(gtp_spec, input_tensor_name, full_tensor_index_values):
+def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
     tensor_spec = gtp_spec['tensors'][get_tensor_index(gtp_spec, input_tensor_name)]
     tensor_data = tensor_spec['local_data']
     for row in tensor_data:
         matched_index_count = 0
         for tensor_index_name in tensor_spec['indices']:
-            if row[tensor_index_name] == full_tensor_index_values[tensor_index_name]:
+            if row[tensor_index_name] == tensor_index_values[tensor_index_name]:
                 matched_index_count += 1
         if matched_index_count == len(tensor_spec['indices']):
             return row['value']
     return None
+
+def linear_index_to_tensor_index( gtp_spec, linear_index, linear_index_tensor_name, tensor_index_tensor_name=None, as_dict=True ):
+    current_stride = 1
+    tensor_index_values_dict = {}
+    if tensor_index_tensor_name is None:
+        tensor_index_tensor_name = linear_index_tensor_name
+    tensor_index_tensor_indices = gtp_spec['tensors'][get_tensor_index(gtp_spec, tensor_index_tensor_name)]['indices']
+    for index_name in gtp_spec['tensors'][get_tensor_index(gtp_spec, linear_index_tensor_name)]['indices']:
+        index_cardinality = gtp_spec['config']['cardinalities'][index_name]
+        value = ((linear_index / current_stride) % index_cardinality) + 1
+        current_stride *= index_cardinality
+        if index_name in tensor_index_tensor_indices:
+            tensor_index_values_dict[index_name] = value
+
+    if as_dict:
+        return tensor_index_values_dict
+    else:
+        # make sure ordering is in 'tensor_index_tensor_name' indices order
+        tensor_index_values_list = []
+        for index_name in tensor_index_tensor_indices:
+            tensor_index_values_list.append(tensor_index_values_dict[index_name])
+        return tuple(tensor_index_values_list)
 
 def gtp(spark, gtp_spec):
     
@@ -53,16 +75,11 @@ def gtp(spark, gtp_spec):
 
     print ('gtp_spec %s' % gtp_spec)
 
-    # map function to calculate each entry of the full tensor
+    # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
     def mapfunc(full_tensor_linear_index):
         print( '\n\nf %s' %full_tensor_linear_index)
         # calculate dimension indices from linear index,
-        stride = 1
-        full_tensor_index_values = {}
-        for full_tensor_index_name in gtp_spec['tensors'][get_tensor_index(gtp_spec, full_tensor_name)]['indices']:
-            index_cardinality = gtp_spec['config']['cardinalities'][full_tensor_index_name]
-            full_tensor_index_values[full_tensor_index_name] = ((full_tensor_linear_index / stride) % index_cardinality) + 1
-            stride *= index_cardinality
+        full_tensor_index_values = linear_index_to_tensor_index( gtp_spec, full_tensor_linear_index, full_tensor_name)
 
         # fetch corresponding input tensor values
         # multiply them and return (linear index, output_value)
@@ -80,7 +97,9 @@ def gtp(spark, gtp_spec):
         if output_value is None:
             return None
         else:
-            return (full_tensor_linear_index, output_value)
+            # convert full_tensor_linear_index to output full index
+            output_tensor_index = linear_index_to_tensor_index( gtp_spec, full_tensor_linear_index, full_tensor_name, gtp_spec['config']['output'], as_dict=False )
+            return (output_tensor_index, output_value)
 
     #logFile = "/home/sprk/shared/file.txt"  # Should be some file on your system
     #x_data_path = '/home/sprk/shared/coupled_dataset/AAPL/observation_data-AAPL-30-days-1000-words-268-documents-RS.csv'
@@ -109,7 +128,9 @@ def gtp(spark, gtp_spec):
         else:
             print('info: Not re-initializing %s' %input_tensor_name)
 
-    return rdd.map(mapfunc).collect()
+    rdd1 = rdd.map(mapfunc)
+    print( rdd1.collect() )
+    return rdd1.reduceByKey(add).collect()
 
 
 if __name__ == '__main__':
@@ -140,5 +161,5 @@ if __name__ == '__main__':
     }
 
     spark = SparkSession.builder.appName("gtp").getOrCreate()
-    gtp(spark, gtp_spec)
+    print( gtp(spark, gtp_spec) )
     spark.stop()
