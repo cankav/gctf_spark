@@ -15,8 +15,17 @@ def read_tensor_data(spark_session, tensor_name, cache=True, root_path='/home/sp
         tensor_data.cache()
     return tensor_data
 
-def find_tensor_value(row):
-    
+def find_tensor_value(gtp_spec, input_tensor_name, full_tensor_index_values):
+    tensor_spec = gtp_spec['tensors'][get_tensor_index(gtp_spec, input_tensor_name)]
+    tensor_data = tensor_spec['local_data']
+    for row in tensor_data:
+        matched_index_count = 0
+        for tensor_index_name in tensor_spec['indices']:
+            if row[tensor_index_name] == full_tensor_index_values[tensor_index_name]:
+                matched_index_count += 1
+        if matched_index_count == len(tensor_spec['indices']):
+            return row['value']
+    return None
 
 def gtp(gtp_spec):
     
@@ -46,36 +55,32 @@ def gtp(gtp_spec):
 
     # map function to calculate each entry of the full tensor
     def mapfunc(full_tensor_linear_index):
+        print( '\n\nf %s' %full_tensor_linear_index)
         # calculate dimension indices from linear index,
-        left_hand_indices_step_divider = 1
+        stride = 1
         full_tensor_index_values = {}
         for full_tensor_index_name in gtp_spec['tensors'][get_tensor_index(gtp_spec, full_tensor_name)]['indices']:
             index_cardinality = gtp_spec['config']['cardinalities'][full_tensor_index_name]
-            full_tensor_index_values[full_tensor_index_name] = (full_tensor_linear_index / left_hand_indices_step_divider) % index_cardinality
-            left_hand_indices_step_divider *= index_cardinality
+            full_tensor_index_values[full_tensor_index_name] = ((full_tensor_linear_index / stride) % index_cardinality) + 1
+            stride *= index_cardinality
 
         # fetch corresponding input tensor values
         # multiply them and return (linear index, output_value)
         output_value = None
         for input_tensor_name in gtp_spec['config']['inputs']:
             tensor_config_index = get_tensor_index(gtp_spec, input_tensor_name)
-            query = None
-            for key, value in full_tensor_index_values.iteritems():
-                if key in gtp_spec['tensors'][tensor_config_index]['indices']:
-                    if query is None:
-                        query = 'SELECT value FROM %s WHERE' %(input_tensor_name)
-                    else:
-                        query += ' AND '
-                    query += '%s=%s' % (key, value)
-            input_tensor_value = filter(find_tensor_value, gtp_spec['tensors'][tensor_config_index]['local_data']) #spark.sql(query)
-
+            input_tensor_value = find_tensor_value(gtp_spec, input_tensor_name, full_tensor_index_values) #spark.sql(query)
             if input_tensor_value is not None:
                 if output_value is None:
                     output_value = input_tensor_value
                 else:
                     output_value *= input_tensor_value
-
-        return (full_tensor_linear_index, output_value)
+        print( 'full_tensor_index_values %s' %full_tensor_index_values )
+        print( 'output_value %s' %output_value )
+        if output_value is None:
+            return None
+        else:
+            return (full_tensor_linear_index, output_value)
 
     #logFile = "/home/sprk/shared/file.txt"  # Should be some file on your system
     #x_data_path = '/home/sprk/shared/coupled_dataset/AAPL/observation_data-AAPL-30-days-1000-words-268-documents-RS.csv'
@@ -93,7 +98,7 @@ def gtp(gtp_spec):
     spark = SparkSession.builder.appName("gtp").getOrCreate()
     sc = spark.sparkContext
 
-    rdd = sc.parallelize(xrange(gtp_spec['tensors'][get_tensor_index(gtp_spec, '_gtp_full_tensor')]['numel']))
+    rdd = sc.parallelize(xrange(1,gtp_spec['tensors'][get_tensor_index(gtp_spec, '_gtp_full_tensor')]['numel']))
     for input_tensor_name in gtp_spec['config']['inputs']:
         tensor_config_index = get_tensor_index(gtp_spec, input_tensor_name)
         if 'dataframe' not in gtp_spec['tensors'][tensor_config_index]:
