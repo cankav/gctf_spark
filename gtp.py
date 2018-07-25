@@ -123,6 +123,8 @@ def gtp(spark, gtp_spec):
     print( rdd1.collect() )
     return rdd1.reduceByKey(add).collect()
 
+# >>> rdd.saveAsSequenceFile("path/to/file")
+# >>> sorted(sc.sequenceFile("path/to/file").collect())
 
 if __name__ == '__main__':
     gtp_spec = {
@@ -151,3 +153,7 @@ if __name__ == '__main__':
     spark = SparkSession.builder.appName("gtp").getOrCreate()
     print( gtp(spark, gtp_spec) )
     spark.stop()
+
+# >> one*two
+#ans =        11800       13400       15000
+#             14000       16000       18000
