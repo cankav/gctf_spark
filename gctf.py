@@ -1,4 +1,5 @@
 from gtp import gtp
+import operator
 
 def generate_tensor(gctf_model, tensor_name, indices):
     assert tensor_name not in gctf_model['tensors'], 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
@@ -47,13 +48,34 @@ def gen_gctf_rules(gctf_model):
         # update each X_hat
         for factorization in gctf_model['config']['factorizations']:
             observed_tensor_name = factorization['observed_tensor']
+            observed_tensor_xhat_name = '_gtp_hat_'+observed_tensor_name
             update_rules.append(
                 {
-                    'operation':'gtp',
-                    'gtp_spec' : gen_gtp(gctf_model, '_gtp_hat_'+observed_tensor_name, factorization['latent_tensors'])
+                    'operation_type':'gtp',
+                    'gtp_spec' : gen_gtp(gctf_model, observed_tensor_xhat_name, factorization['latent_tensors'])
                 }
             )
-            
+
+            # update d1_Q_v if Z_alpha appears in factorization of X_v
+            if ltn in factorization['latent_tensors']:
+                update_rules.append(
+                    {
+                        'operation_type':'hadamard',
+                        'output':'_gtp_d1_Q_v_'+observed_tensor_name,
+                        'input':{
+                            'combination_operator':operator.mul,
+                            'arguments':[
+                                {'data':observed_tensor_name},
+                                {'data':observed_tensor_xhat_name,
+                                 'pre_processor': {
+                                     'operator':'pow',
+                                     'argument':-1
+                                 }
+                                }
+                            ]
+                        }
+                    }
+                )
 
 def gctf_epoch(gctf_model, iteration_num):
     gen_gctf_rules()
