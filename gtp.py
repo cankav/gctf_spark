@@ -1,12 +1,8 @@
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from operator import add
-
-def read_tensor_data(spark_session, tensor_name, cache=True, root_path='/home/sprk/shared/gctf_data/'):
-    tensor_data = spark_session.read.load(root_path+tensor_name+'.csv', format="csv", sep=",", inferSchema="true", header="true")
-    if cache:
-        tensor_data.cache()
-    return tensor_data
+from utils import read_tensor_data
+from hadamard import hadamard
 
 def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
     tensor_spec = gtp_spec['tensors'][input_tensor_name]
@@ -42,8 +38,7 @@ def linear_index_to_tensor_index( gtp_spec, linear_index, linear_index_tensor_na
             tensor_index_values_list.append(tensor_index_values_dict[index_name])
         return tuple(tensor_index_values_list)
 
-def gtp(spark, gtp_spec):
-    
+def gtp(spark, gtp_spec, gctf_data_path='/home/sprk/shared/gctf_data'):
     # get all indices
     full_tensor_name = '_gtp_full_tensor'
     if full_tensor_name not in gtp_spec['tensors']:
@@ -77,7 +72,7 @@ def gtp(spark, gtp_spec):
         # fetch corresponding input tensor values
         # multiply them and return (linear index, output_value)
         output_value = None
-        for input_tensor_name in gtp_spec['config']['inputs']:
+        for input_tensor_name in gtp_spec['config']['input']:
             input_tensor_value = find_tensor_value(gtp_spec, input_tensor_name, full_tensor_index_values) #spark.sql(query)
             if input_tensor_value is not None:
                 if output_value is None:
@@ -105,20 +100,17 @@ def gtp(spark, gtp_spec):
     #totalLength = lineLengths.reduce(lambda a, b: a + b)
     #sc.stop()
 
-    gctf_data_path = '/home/sprk/shared/gctf_data'
-    sc = spark.sparkContext
-    rdd = sc.parallelize(xrange(gtp_spec['tensors']['_gtp_full_tensor']['numel']))
-    for input_tensor_name in gtp_spec['config']['inputs']:
+    for input_tensor_name in gtp_spec['config']['input']:
         if 'dataframe' not in gtp_spec['tensors'][input_tensor_name]:
-            tensor_data = read_tensor_data(spark, input_tensor_name)
-            #tensor_data.createOrReplaceTempView(input_tensor_name)
-            gtp_spec['tensors'][input_tensor_name]['local_data'] = tensor_data.rdd.collect()
+            gtp_spec['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path)
             #print ('\n\n\n\n')
             #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
             #print ('\n\n\n\n')
         else:
             print('info: Not re-initializing %s' %input_tensor_name)
 
+    sc = spark.sparkContext
+    rdd = sc.parallelize(xrange(gtp_spec['tensors']['_gtp_full_tensor']['numel']))
     rdd1 = rdd.map(mapfunc)
     print( rdd1.collect() )
     return rdd1.reduceByKey(add).collect()
@@ -135,7 +127,7 @@ if __name__ == '__main__':
                 'k': 4
             },
             'output' : 'gtp_test_output',
-            'inputs' : [ 'gtp_test_input1', 'gtp_test_input2' ]
+            'input' : [ 'gtp_test_input1', 'gtp_test_input2' ]
         },
         'tensors' : {
             'gtp_test_output' : {

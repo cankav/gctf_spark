@@ -1,6 +1,18 @@
 #from gtp import gtp
 import operator
 import copy
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SparkSession
+from gtp import gtp
+
+def get_observed_tensor_names_of_latent_tensor(gctf_model, ltn):
+    otn_with_ltn=[]
+    for factorization in gctf_model['config']['factorizations']:
+        if ltn in factorization['latent_tensors']:
+            otn_with_ltn.append(factorization['observed_tensor'])
+
+    assert len(otn_with_ltn), ('ltn %s was not found in any of the factorizations' %ltn)
+    return otn_with_ltn
 
 def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tensor_xhat_name):
     update_rules.append( {
@@ -173,7 +185,7 @@ def update_xhat(gctf_model, update_rules, observed_tensor_xhat_name, factorizati
 
 def update_Z_alpha(gctf_model, update_rules, ltn):
     # { '=', obj.Z_alpha(alpha), ['obj.config.tfmodel.Z_alpha(' num2str(alpha) ').data .* obj.config.tfmodel.d1_alpha(' num2str(alpha) ').data ./ obj.config.tfmodel.d2_alpha('  num2str(alpha) ').data'] };
-    update_rules.append( {
+    rule = {
         'operation_type':'hadamard',
         'output':ltn,
         'input':[
@@ -183,18 +195,43 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
             {
                 'suboperation':{
                     'combination_operator':operator.div,
-                    'arguments':[
-                        {
-                            'data':'_gtp_d1_alpha_'+ltn
-                        },
-                        {
-                            'data':'_gtp_d2_alpha_'+ltn
-                        }
-                    ]
+                    'arguments':None
                 }
             }
         ]
-    } )
+    }
+
+    otn_with_ltn=get_observed_tensor_names_of_latent_tensor(gctf_model, ltn)
+    if len(otn_with_ltn) == 1:
+        rule['input'][1]['suboperation']['arguments'] = [
+            {'data':'_gtp_d1_alpha_'+ltn+'_v_'+otn_with_ltn[0]},
+            {'data':'_gtp_d2_alpha_'+ltn+'_v_'+otn_with_ltn[0]}
+        ]
+    else:
+        rule['input'][1]['suboperation']['arguments'] = [
+            {
+                'suboperation':{
+                    'combination_operator':operator.add,
+                    'arguments':[]
+                }
+            },
+            {
+                'suboperation':{
+                    'combination_operator':operator.add,
+                    'arguments':[]
+                }
+            }
+        ]
+        for otn in otn_with_ltn:
+            rule['input'][1]['suboperation']['arguments'][0]['suboperation']['arguments'].append(
+                {'data':'_gtp_d1_alpha_'+ltn+'_v_'+otn},
+            )
+
+            rule['input'][1]['suboperation']['arguments'][1]['suboperation']['arguments'].append(
+                {'data':'_gtp_d2_alpha_'+ltn+'_v_'+otn},
+            )
+
+        update_rules.append(rule)
 
 
 def generate_tensor(gctf_model, tensor_name, indices):
@@ -235,12 +272,34 @@ def gen_update_rules(gctf_model):
         for ltn in factorization['latent_tensors']:
             latent_tensor_names.add( ltn )
 
+            generate_tensor(gctf_model, '_gtp_d1_alpha_'+ltn+'_v_'+observed_tensor_name, gctf_model['tensors'][ltn]['indices'])
+            generate_tensor(gctf_model, '_gtp_d2_alpha_'+ltn+'_v_'+observed_tensor_name, gctf_model['tensors'][ltn]['indices'])
+
+
     latent_tensor_names = list(latent_tensor_names)
     for ltn in latent_tensor_names:
-        generate_tensor(gctf_model, '_gtp_d1_alpha_'+ltn, gctf_model['tensors'][ltn]['indices'])
-        generate_tensor(gctf_model, '_gtp_d2_alpha_'+ltn, gctf_model['tensors'][ltn]['indices'])
         generate_tensor(gctf_model, '_gtp_d1_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
         generate_tensor(gctf_model, '_gtp_d2_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
+
+    # get all indices
+    all_indices = set()
+    for tensor_name, tensor in gctf_model['tensors'].iteritems():
+        all_indices.update( tensor['indices'] )
+    # all_indices must have fixed ordering
+    all_indices = list(all_indices)
+
+    # add full tensor to the tensor list
+    gctf_model['tensors']['_gtp_full_tensor'] = {'indices':all_indices}
+
+    # indices are assumed to be serialized left to right
+    for tensor_name, tensor in gctf_model['tensors'].iteritems():
+        tensor['strides'] = []
+        current_stride = 1
+        tensor['numel'] = 1
+        for tensor_index_name in tensor['indices']:
+            tensor['strides'].append(current_stride)
+            current_stride *= gctf_model['config']['cardinalities'][tensor_index_name]
+            tensor['numel'] *= gctf_model['config']['cardinalities'][tensor_index_name]
 
 
     update_rules = []
@@ -269,10 +328,18 @@ def gen_update_rules(gctf_model):
         # update Z_alpha with d1/d2
         update_Z_alpha(gctf_model, update_rules, ltn)
 
+    print(update_rules)
     return update_rules
 
-def gctf_epoch(gctf_model, iteration_num):
-    update_rules = gen_update_rules(gctf_model)
+def gctf_epoch(spark, gctf_model, iteration_num):
+    for update_rule in gen_update_rules(gctf_model):
+        if update_rule['operation_type'] == 'gtp':
+            gtp(spark, update_rule['gtp_spec'])
+        elif update_rule['operation_type'] == 'hadamard':
+            hadamard(spark, gctf_model, update_rule)
+        else:
+            raise Exception('unknown opreation_type %s' %update_rule)
+
     print update_rules
 
 if __name__ == '__main__':
@@ -318,4 +385,6 @@ if __name__ == '__main__':
         }
     }
 
-    gctf_epoch(gctf_model, 10)
+    spark = SparkSession.builder.appName("gtp").getOrCreate()
+    gctf_epoch(spark, gctf_model, 10)
+    spark.stop()
