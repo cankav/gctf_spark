@@ -2,12 +2,13 @@ from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from operator import add
 from utils import read_tensor_data
-from hadamard import hadamard
+#from hadamard import hadamard
 
 def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
     tensor_spec = gtp_spec['tensors'][input_tensor_name]
     tensor_data = tensor_spec['local_data']
     for row in tensor_data:
+        #print('was %s' %row)
         matched_index_count = 0
         for tensor_index_name in tensor_spec['indices']:
             if row[tensor_index_name] == tensor_index_values[tensor_index_name]:

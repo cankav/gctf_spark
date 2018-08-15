@@ -332,6 +332,15 @@ def gen_update_rules(gctf_model):
     return update_rules
 
 def gctf_epoch(spark, gctf_model, iteration_num):
+    for input_tensor_name in gctf_model['config']['tensors']:
+        if 'dataframe' not in gctf_model['config']['tensors'][input_tensor_name]:
+            gctf_model['config']['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path)
+            #print ('\n\n\n\n')
+            #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
+            #print ('\n\n\n\n')
+        else:
+            print('info: Not re-initializing %s' %input_tensor_name)
+
     for update_rule in gen_update_rules(gctf_model):
         if update_rule['operation_type'] == 'gtp':
             gtp(spark, update_rule['gtp_spec'])
