@@ -1,8 +1,8 @@
 from utils import read_tensor_data
 
 def compute_output_element(output_tensor_linear_index):
-    for input_spec in gtp_spec['config']['input']['arguments']:
-        get_input_value()
+    for argument in gtp_spec['config']['input']['arguments']:
+        get_input_value(argument)
     
 
 def hadamard(spark, gctf_model, update_rule, gctf_data_path='/home/sprk/shared/gctf_data'):

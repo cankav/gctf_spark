@@ -5,10 +5,10 @@ from utils import read_tensor_data
 #from hadamard import hadamard
 
 def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
+    # TODO: replace with RDD lookup
     tensor_spec = gtp_spec['tensors'][input_tensor_name]
     tensor_data = tensor_spec['local_data']
     for row in tensor_data:
-        #print('was %s' %row)
         matched_index_count = 0
         for tensor_index_name in tensor_spec['indices']:
             if row[tensor_index_name] == tensor_index_values[tensor_index_name]:
@@ -103,7 +103,7 @@ def gtp(spark, gtp_spec, gctf_data_path='/home/sprk/shared/gctf_data'):
 
     for input_tensor_name in gtp_spec['config']['input']:
         if 'dataframe' not in gtp_spec['tensors'][input_tensor_name]:
-            gtp_spec['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path)
+            gtp_spec['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path).collect() # TODO: WHY? no collect causes Py4JError: An error occurred while calling o40.__getnewargs__. Trace: py4j.Py4JException: Method __getnewargs__([]) does not exist
             #print ('\n\n\n\n')
             #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
             #print ('\n\n\n\n')
