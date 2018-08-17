@@ -2,10 +2,11 @@ from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from operator import add
 from utils import read_tensor_data
+from utils import linear_index_to_tensor_index
 #from hadamard import hadamard
 
 def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
-    # TODO: replace with RDD lookup
+    # TODO: replace with DataFrame.filter
     tensor_spec = gtp_spec['tensors'][input_tensor_name]
     tensor_data = tensor_spec['local_data']
     for row in tensor_data:
@@ -16,28 +17,6 @@ def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
         if matched_index_count == len(tensor_spec['indices']):
             return row['value']
     return None
-
-def linear_index_to_tensor_index( gtp_spec, linear_index, linear_index_tensor_name, tensor_index_tensor_name=None, as_dict=True ):
-    current_stride = 1
-    tensor_index_values_dict = {}
-    if tensor_index_tensor_name is None:
-        tensor_index_tensor_name = linear_index_tensor_name
-    tensor_index_tensor_indices = gtp_spec['tensors'][tensor_index_tensor_name]['indices']
-    for index_name in gtp_spec['tensors'][linear_index_tensor_name]['indices']:
-        index_cardinality = gtp_spec['config']['cardinalities'][index_name]
-        value = ((linear_index / current_stride) % index_cardinality) + 1
-        current_stride *= index_cardinality
-        if index_name in tensor_index_tensor_indices:
-            tensor_index_values_dict[index_name] = value
-
-    if as_dict:
-        return tensor_index_values_dict
-    else:
-        # make sure ordering is in 'tensor_index_tensor_name' indices order
-        tensor_index_values_list = []
-        for index_name in tensor_index_tensor_indices:
-            tensor_index_values_list.append(tensor_index_values_dict[index_name])
-        return tuple(tensor_index_values_list)
 
 def gtp(spark, gtp_spec, gctf_data_path='/home/sprk/shared/gctf_data'):
     # get all indices
@@ -68,7 +47,7 @@ def gtp(spark, gtp_spec, gctf_data_path='/home/sprk/shared/gctf_data'):
     def mapfunc(full_tensor_linear_index):
         print( '\n\nf %s' %full_tensor_linear_index)
         # calculate dimension indices from linear index,
-        full_tensor_index_values = linear_index_to_tensor_index( gtp_spec, full_tensor_linear_index, full_tensor_name)
+        full_tensor_index_values = linear_index_to_tensor_index( gtp_spec['tensors'], gtp_spec['config']['cardinalities'], full_tensor_linear_index, full_tensor_name)
 
         # fetch corresponding input tensor values
         # multiply them and return (linear index, output_value)
@@ -86,7 +65,7 @@ def gtp(spark, gtp_spec, gctf_data_path='/home/sprk/shared/gctf_data'):
             return None
         else:
             # convert full_tensor_linear_index to output full index
-            output_tensor_index = linear_index_to_tensor_index( gtp_spec, full_tensor_linear_index, full_tensor_name, gtp_spec['config']['output'], as_dict=False )
+            output_tensor_index = linear_index_to_tensor_index( gtp_spec['tensors'], gtp_spec['config']['cardinalities'], full_tensor_linear_index, full_tensor_name, gtp_spec['config']['output'], as_dict=False )
             return (output_tensor_index, output_value)
 
     #logFile = "/home/sprk/shared/file.txt"  # Should be some file on your system
