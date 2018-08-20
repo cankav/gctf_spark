@@ -3,22 +3,27 @@ from pyspark.sql import SparkSession
 from operator import add
 from utils import read_tensor_data
 from utils import linear_index_to_tensor_index
-#from hadamard import hadamard
+from utils import gctf_data_path
 
 def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
-    # TODO: replace with DataFrame.filter
     tensor_spec = gtp_spec['tensors'][input_tensor_name]
     tensor_data = tensor_spec['local_data']
+
+    #for tiv in tensor_index_values:
+    #    tensor_data.filter(str(tiv) + '=' + str(tensor_index_values[tiv]))
+    #return tensor_data
+
     for row in tensor_data:
         matched_index_count = 0
         for tensor_index_name in tensor_spec['indices']:
             if row[tensor_index_name] == tensor_index_values[tensor_index_name]:
                 matched_index_count += 1
         if matched_index_count == len(tensor_spec['indices']):
+            print('was %s' %str(row))
             return row['value']
     return None
 
-def gtp(spark, gtp_spec, gctf_data_path='/home/sprk/shared/gctf_data'):
+def gtp(spark, gtp_spec):
     # get all indices
     full_tensor_name = '_gtp_full_tensor'
     if full_tensor_name not in gtp_spec['tensors']:
@@ -82,7 +87,8 @@ def gtp(spark, gtp_spec, gctf_data_path='/home/sprk/shared/gctf_data'):
 
     for input_tensor_name in gtp_spec['config']['input']:
         if 'dataframe' not in gtp_spec['tensors'][input_tensor_name]:
-            gtp_spec['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path).collect() # TODO: WHY? no collect causes Py4JError: An error occurred while calling o40.__getnewargs__. Trace: py4j.Py4JException: Method __getnewargs__([]) does not exist
+            print('reading tensor data %s' %input_tensor_name)
+            gtp_spec['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gtp_spec['tensors'][input_tensor_name]['indices']).collect() # TODO: WHY? no collect causes Py4JError: An error occurred while calling o40.__getnewargs__. Trace: py4j.Py4JException: Method __getnewargs__([]) does not exist
             #print ('\n\n\n\n')
             #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
             #print ('\n\n\n\n')

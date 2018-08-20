@@ -1,9 +1,21 @@
 import os.path
 
-def read_tensor_data(spark_session, tensor_name, root_path, cache=True):
+gctf_data_path='/home/sprk/shared/gctf_data'
+
+def read_tensor_data(spark_session, tensor_name, root_path, tensor_indices, cache=True):
     filename='/'.join([root_path,tensor_name])+'.csv'
     assert os.path.isfile(filename), 'read_tensor_data: File %s does not exist, aborting'%filename
-    tensor_data = spark_session.read.load(filename, format="csv", sep=",", inferSchema="true", header="true")
+
+    schema = ''
+    for index_index, index in enumerate(tensor_indices):
+        if index_index != 0:
+            schema += ','
+        schema += index + ' INT '
+    schema += ', value DOUBLE'
+
+    print('read_tensor_data: reading file %s with schema %s' %(filename, schema))
+
+    tensor_data = spark_session.read.load(filename, format="csv", sep=",", header="true", schema=schema) #, inferSchema="true")
     if cache:
         tensor_data.cache()
     return tensor_data

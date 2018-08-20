@@ -4,6 +4,11 @@ import copy
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from gtp import gtp
+from utils import linear_index_to_tensor_index
+from utils import read_tensor_data
+from utils import gctf_data_path
+from hadamard import hadamard
+from generate_random_tensor_data import generate_random_tensor_data
 
 def get_observed_tensor_names_of_latent_tensor(gctf_model, ltn):
     otn_with_ltn=[]
@@ -194,7 +199,7 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
             },
             {
                 'suboperation':{
-                    'combination_operator':operator.div,
+                    'combination_operator':operator.truediv,
                     'arguments':None
                 }
             }
@@ -240,6 +245,8 @@ def generate_tensor(gctf_model, tensor_name, indices):
     gctf_model['tensors'][tensor_name] = {
         'indices' : indices
     }
+
+    generate_random_tensor_data(gctf_model['tensors'], gctf_model['config']['cardinalities'], tensor_name, gctf_data_path)
 
 
 def gen_gtp(gctf_model, output_tensor_name, input_tensor_names):
@@ -331,69 +338,30 @@ def gen_update_rules(gctf_model):
     print(update_rules)
     return update_rules
 
-def gctf_epoch(spark, gctf_model, iteration_num):
-    for input_tensor_name in gctf_model['config']['tensors']:
-        if 'dataframe' not in gctf_model['config']['tensors'][input_tensor_name]:
-            gctf_model['config']['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path)
+def gctf(spark, gctf_model, iteration_num):
+    for input_tensor_name in gctf_model['tensors']:
+        if 'dataframe' not in gctf_model['tensors'][input_tensor_name]:
+            gctf_model['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gctf_model['tensors'][input_tensor_name]['indices'])
             #print ('\n\n\n\n')
             #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
             #print ('\n\n\n\n')
         else:
             print('info: Not re-initializing %s' %input_tensor_name)
 
-    for update_rule in gen_update_rules(gctf_model):
-        if update_rule['operation_type'] == 'gtp':
-            gtp(spark, update_rule['gtp_spec'])
-        elif update_rule['operation_type'] == 'hadamard':
-            hadamard(spark, gctf_model, update_rule)
-        else:
-            raise Exception('unknown opreation_type %s' %update_rule)
-
+    update_rules = gen_update_rules(gctf_model)
     print update_rules
+    
+    for epoch_index in range(iteration_num):
+        for update_rule in update_rules:
+            if update_rule['operation_type'] == 'gtp':
+                gtp(spark, update_rule['gtp_spec'])
+            elif update_rule['operation_type'] == 'hadamard':
+                hadamard(spark, gctf_model, update_rule)
+            else:
+                raise Exception('unknown opreation_type %s' %update_rule)
 
 if __name__ == '__main__':
-    gctf_model = {
-        'config' : {
-            'cardinalities' : {
-                'i' : 2,
-                'j' : 3,
-                'k' : 4,
-                'r' : 5
-            },
-            'factorizations' : [
-                {
-                    'observed_tensor' : 'X1',
-                    'latent_tensors' : [ 'Z1', 'Z2' ],
-                    'p' : 1,
-                    'phi' : 1
-                },
-                {
-                    'observed_tensor' : 'X2',
-                    'latent_tensors' : [ 'Z1', 'Z3' ],
-                    'p' : 1,
-                    'phi' : 1
-                }
-            ]
-        },
-        'tensors' : {
-            'X1' : {
-                'indices' : [ 'i', 'j' ]
-            },
-            'X2' : {
-                'indices' : [ 'i', 'r' ]
-            },
-            'Z1' : {
-                'indices' : [ 'i', 'k' ]
-            },
-            'Z2' : {
-                'indices' : [ 'k', 'j' ]
-            },
-            'Z3' : {
-                'indices' : [ 'k', 'r' ]
-            }
-        }
-    }
-
+    from tests import gctf_model
     spark = SparkSession.builder.appName("gtp").getOrCreate()
-    gctf_epoch(spark, gctf_model, 10)
+    gctf(spark, gctf_model, 10)
     spark.stop()
