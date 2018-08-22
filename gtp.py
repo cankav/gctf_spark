@@ -33,20 +33,20 @@ def gtp(spark, gtp_spec):
         # all_indices must have fixed ordering
         all_indices = list(all_indices)
 
-    # add full tensor to the tensor list
-    gtp_spec['tensors']['_gtp_full_tensor'] = {'indices':all_indices}
+        # add full tensor to the tensor list
+        gtp_spec['tensors']['_gtp_full_tensor'] = {'indices':all_indices}
 
-    # indices are assumed to be serialized left to right
-    for tensor_name, tensor in gtp_spec['tensors'].iteritems():
-        tensor['strides'] = []
-        current_stride = 1
-        tensor['numel'] = 1
-        for tensor_index_name in tensor['indices']:
-            tensor['strides'].append(current_stride)
-            current_stride *= gtp_spec['config']['cardinalities'][tensor_index_name]
-            tensor['numel'] *= gtp_spec['config']['cardinalities'][tensor_index_name]
+        # indices are assumed to be serialized left to right
+        for tensor_name, tensor in gtp_spec['tensors'].iteritems():
+            tensor['strides'] = []
+            current_stride = 1
+            tensor['numel'] = 1
+            for tensor_index_name in tensor['indices']:
+                tensor['strides'].append(current_stride)
+                current_stride *= gtp_spec['config']['cardinalities'][tensor_index_name]
+                tensor['numel'] *= gtp_spec['config']['cardinalities'][tensor_index_name]
 
-    print ('gtp_spec %s' % gtp_spec)
+        print ('gtp_spec %s' % gtp_spec)
 
     # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
     def mapfunc(full_tensor_linear_index):
@@ -88,7 +88,9 @@ def gtp(spark, gtp_spec):
     for input_tensor_name in gtp_spec['config']['input']:
         if 'dataframe' not in gtp_spec['tensors'][input_tensor_name]:
             print('reading tensor data %s' %input_tensor_name)
-            gtp_spec['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gtp_spec['tensors'][input_tensor_name]['indices']).collect() # TODO: WHY? no collect causes Py4JError: An error occurred while calling o40.__getnewargs__. Trace: py4j.Py4JException: Method __getnewargs__([]) does not exist
+            [rtd_data, gtp_spec['tensors'][input_tensor_name]['filename']] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gtp_spec['tensors'][input_tensor_name]['indices'])
+            #print('tensor %s filename %s' %(input_tensor_name, gtp_spec['tensors'][input_tensor_name]['filename']))
+            gtp_spec['tensors'][input_tensor_name]['local_data'] = rtd_data.collect() # TODO: WHY? no collect causes Py4JError: An error occurred while calling o40.__getnewargs__. Trace: py4j.Py4JException: Method __getnewargs__([]) does not exist ---> JOIN MULTIPLE rdds ! ---> put all data in joint space and query for calculations
             #print ('\n\n\n\n')
             #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
             #print ('\n\n\n\n')
@@ -97,9 +99,30 @@ def gtp(spark, gtp_spec):
 
     sc = spark.sparkContext
     rdd = sc.parallelize(xrange(gtp_spec['tensors']['_gtp_full_tensor']['numel']))
-    rdd1 = rdd.map(mapfunc)
-    print( rdd1.collect() )
-    return rdd1.reduceByKey(add).collect()
+    rdd = rdd.map(mapfunc).reduceByKey(add)
+
+    # reformat structure ( ((i,j,k), value), ... ) -> ( (i,j,k,value), ... )
+    def build_row(indices_value_tuple):
+        row = [indices_value_tuple[1]]
+        for i in indices_value_tuple[0]:
+            row.append(i)
+        return list(reversed(row))
+
+    output_tensor_name = gtp_spec['config']['output']
+    rdd = rdd.map( lambda x: build_row(x), gtp_spec['tensors'][output_tensor_name]['indices'])
+
+    df = spark.createDataFrame(rdd)
+    if 'filename' in gtp_spec['tensors'][output_tensor_name]:
+        filename = gtp_spec['tensors'][output_tensor_name]['filename']
+    else:
+        gtp_spec['tensors'][output_tensor_name]['filename'] = '/'.join([gctf_data_path,output_tensor_name])+'.csv'
+    #print('WAS')
+    #print(rdd.collect())
+    df.write.csv('file://'+gtp_spec['tensors'][output_tensor_name]['filename'])
+
+    #rdd1 = rdd.map(mapfunc)
+    #rdd2 = rdd1.reduceByKey(add)
+    return df
 
 # >>> rdd.saveAsSequenceFile("path/to/file")
 # >>> sorted(sc.sequenceFile("path/to/file").collect())

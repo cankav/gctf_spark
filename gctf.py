@@ -341,7 +341,7 @@ def gen_update_rules(gctf_model):
 def gctf(spark, gctf_model, iteration_num):
     for input_tensor_name in gctf_model['tensors']:
         if 'dataframe' not in gctf_model['tensors'][input_tensor_name]:
-            gctf_model['tensors'][input_tensor_name]['local_data'] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gctf_model['tensors'][input_tensor_name]['indices'])
+            [gctf_model['tensors'][input_tensor_name]['local_data'], gctf_model['tensors'][input_tensor_name]['filename']] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gctf_model['tensors'][input_tensor_name]['indices'])
             #print ('\n\n\n\n')
             #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
             #print ('\n\n\n\n')

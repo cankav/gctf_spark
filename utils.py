@@ -18,7 +18,7 @@ def read_tensor_data(spark_session, tensor_name, root_path, tensor_indices, cach
     tensor_data = spark_session.read.load(filename, format="csv", sep=",", header="true", schema=schema) #, inferSchema="true")
     if cache:
         tensor_data.cache()
-    return tensor_data
+    return (tensor_data, filename)
 
 def linear_index_to_tensor_index( all_tensors, all_cardinalities, linear_index, linear_index_tensor_name, tensor_index_tensor_name=None, as_dict=True ):
     current_stride = 1
