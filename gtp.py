@@ -115,14 +115,17 @@ def gtp(spark, gtp_spec):
     if 'filename' in gtp_spec['tensors'][output_tensor_name]:
         filename = gtp_spec['tensors'][output_tensor_name]['filename']
     else:
-        gtp_spec['tensors'][output_tensor_name]['filename'] = '/'.join([gctf_data_path,output_tensor_name])+'.csv'
+        filename = '/'.join([gctf_data_path,output_tensor_name])+'.csv'
+        gtp_spec['tensors'][output_tensor_name]['filename'] = filename
     #print('WAS')
     #print(rdd.collect())
-    df.write.csv('file://'+gtp_spec['tensors'][output_tensor_name]['filename'])
+    df.write.csv(filename)
 
+    print( 'DF' )
+    print(df.count(), len(df.columns))
     #rdd1 = rdd.map(mapfunc)
     #rdd2 = rdd1.reduceByKey(add)
-    return df
+    return (df, filename)
 
 # >>> rdd.saveAsSequenceFile("path/to/file")
 # >>> sorted(sc.sequenceFile("path/to/file").collect())
@@ -152,7 +155,15 @@ if __name__ == '__main__':
     }
 
     spark = SparkSession.builder.appName("gtp").getOrCreate()
-    print( gtp(spark, gtp_spec) )
+    [df, output_filename] = gtp(spark, gtp_spec)
+
+
+    # TODO: why partial read?
+    #[tensor_data, d]= read_tensor_data(spark, 'gtp_test_output', gctf_data_path, [ 'i', 'j' ])
+    #print( 'READ AGAIN' )
+    #print(tensor_data.collect()) #, inferSchema="true")
+    #print(tensor_data.count(), len(tensor_data.columns))
+
     spark.stop()
 
 # >> one*two

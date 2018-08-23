@@ -1,10 +1,11 @@
 import os.path
 
-gctf_data_path='/home/sprk/shared/gctf_data'
+gctf_data_path='hdfs://spark-master0-dsl05:9000/gctf_data' #'/home/sprk/shared/gctf_data'
 
 def read_tensor_data(spark_session, tensor_name, root_path, tensor_indices, cache=True):
+
     filename='/'.join([root_path,tensor_name])+'.csv'
-    assert os.path.isfile(filename), 'read_tensor_data: File %s does not exist, aborting'%filename
+    #TODO: add this for HDFS assert os.path.isfile(filename), 'read_tensor_data: File %s does not exist, aborting'%filename
 
     schema = ''
     for index_index, index in enumerate(tensor_indices):
