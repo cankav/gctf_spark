@@ -119,7 +119,7 @@ def gtp(spark, gtp_spec):
         gtp_spec['tensors'][output_tensor_name]['filename'] = filename
     #print('WAS')
     #print(rdd.collect())
-    df.write.csv(filename)
+    df.write.csv(filename, mode='overwrite')
 
     print( 'DF' )
     print(df.count(), len(df.columns))

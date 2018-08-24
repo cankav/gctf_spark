@@ -18,11 +18,15 @@ def iter_indices_gen_data(tensors_config, cardinalities, tensor_name, fd, zero_b
         for index_val in range(cardinalities[iter_index_name]):
             iter_indices_gen_data( tensors_config, cardinalities, tensor_name, fd, zero_based_indices, iter_index_values+[index_val] )
 
-def generate_random_tensor_data(tensors_config, cardinalities, tensor_name, data_path='/tmp/', zero_based_indices=False):
-    filename=os.path.join(data_path, tensor_name+'.csv')
-    print ('generate_random_tensor_data: generating %s' %filename)
-    assert not os.path.exists(filename), 'data file %s exists can not procede' %filename
-    fd = open(filename, 'w')
+def generate_random_tensor_data(tensors_config, cardinalities, tensor_name, hdfs_data_path, zero_based_indices=False):
+    hdfs_filename='/'.join([hdfs_data_path, tensor_name+'.csv'])
+    tmp_filename=os.path.join('/tmp', tensor_name+'.csv')
+    print(tmp_filename)
+    print ('generate_random_tensor_data: generating %s' %hdfs_filename)
+    assert not os.path.exists(tmp_filename), 'data file %s exists can not procede' %tmp_filename
+    # TODO: add assert with hdfs_filename
+
+    fd = open(tmp_filename, 'w')
 
     # print header
     for index_index, index_name in enumerate(tensors_config[tensor_name]['indices']):
@@ -32,7 +36,11 @@ def generate_random_tensor_data(tensors_config, cardinalities, tensor_name, data
     fd.write(',value\n')
 
     iter_indices_gen_data(tensors_config, cardinalities, tensor_name, fd, zero_based_indices)
-    fd.close()    
+    fd.close()
+
+    cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(tmp_filename, hdfs_filename)
+    print(cmd)
+    os.system(cmd)
 
 if __name__ == '__main__':
     from tests import gctf_model
