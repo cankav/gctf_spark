@@ -119,10 +119,11 @@ def gtp(spark, gtp_spec):
         gtp_spec['tensors'][output_tensor_name]['filename'] = filename
     #print('WAS')
     #print(rdd.collect())
+    print('df.write.csv filename %s df shape %s %s' %(filename, str(df.count()), str(len(df.columns))))
     df.write.csv(filename, mode='overwrite')
 
-    print( 'DF' )
-    print(df.count(), len(df.columns))
+    #print( 'DF' )
+    #print(df.count(), len(df.columns))
     #rdd1 = rdd.map(mapfunc)
     #rdd2 = rdd1.reduceByKey(add)
     return (df, filename)

@@ -338,16 +338,24 @@ def gen_update_rules(gctf_model):
     print(update_rules)
     return update_rules
 
+def calculate_divergence():
+    pass
+    
+
 def gctf(spark, gctf_model, iteration_num):
     for input_tensor_name in gctf_model['tensors']:
         if 'dataframe' not in gctf_model['tensors'][input_tensor_name]:
-            [gctf_model['tensors'][input_tensor_name]['local_data'], gctf_model['tensors'][input_tensor_name]['filename']] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gctf_model['tensors'][input_tensor_name]['indices'])
+            [rtd_data, gctf_model['tensors'][input_tensor_name]['filename']] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gctf_model['tensors'][input_tensor_name]['indices'])
+            gctf_model['tensors'][input_tensor_name]['local_data'] = rtd_data.collect()
             #print ('\n\n\n\n')
             #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
             #print ('\n\n\n\n')
         else:
             print('info: Not re-initializing %s' %input_tensor_name)
 
+!_gtp_hat_gctf_test_X1 local data is not set
+
+            
     update_rules = gen_update_rules(gctf_model)
     print update_rules
     
@@ -359,6 +367,8 @@ def gctf(spark, gctf_model, iteration_num):
                 hadamard(spark, gctf_model, update_rule)
             else:
                 raise Exception('unknown opreation_type %s' %update_rule)
+
+        calculate_divergence()
 
 if __name__ == '__main__':
     from tests import gctf_model

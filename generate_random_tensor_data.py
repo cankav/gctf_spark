@@ -38,9 +38,9 @@ def generate_random_tensor_data(tensors_config, cardinalities, tensor_name, hdfs
     iter_indices_gen_data(tensors_config, cardinalities, tensor_name, fd, zero_based_indices)
     fd.close()
 
-    cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(tmp_filename, hdfs_filename)
-    print(cmd)
-    os.system(cmd)
+    #cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(tmp_filename, hdfs_filename)
+    #print(cmd)
+    #os.system(cmd)
 
 if __name__ == '__main__':
     from tests import gctf_model

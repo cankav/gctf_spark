@@ -44,14 +44,29 @@ def hadamard(spark, gctf_model, update_rule):
   #   }]
   # }
 
+  def dok_filter(row, output_element_DOK):
+    for index in output_element_DOK:
+      if row[index] != output_element_DOK[index]:
+        return False
+    return True
 
   def get_input_data_values(input_config, output_element_DOK):
     resolved_arguments = []
     for argument in input_config['arguments']:
       if 'data' in argument:
-        input_data_value = gctf_model['tensors'][argument['data']]['local_data']
-        for index_name in output_element_DOK:
-          input_data_value = input_data_value.filter(str(index_name) + '=' + str(output_element_DOK[index_name]))
+        #input_data_value = gctf_model['tensors'][argument['data']]['local_data']
+        #for index_name in output_element_DOK:
+        #  print ('WAAS')
+        #  print(type(input_data_value))
+        #  print(input_data_value)
+        #input_data_value = input_data_value.filter(str(index_name) + '=' + str(output_element_DOK[index_name]))
+
+        assert 'local_data' in gctf_model['tensors'][argument['data']], '%s does not have local_data field, not initialized?' %argument['data'] 
+
+        # TODO: replace with rdd/df search
+        input_data_value = filter(lambda row: dok_filter(row, output_element_DOK), gctf_model['tensors'][argument['data']]['local_data'])
+        assert len(input_data_value) == 1, 'input_data_value must have exactly 1 element'
+        input_data_value = input_data_value[0].value
 
         if 'pre_processor' in argument:
           if argument['pre_processor'] == 'pow':
@@ -72,7 +87,7 @@ def hadamard(spark, gctf_model, update_rule):
     if input_config['combination_operator'] is None:
       assert len(input_config['arguments']) == 1, 'only can output the input if combination_operator is None'
 
-    get_input_data_values()
+    resolved_arguments = get_input_data_values(input_config, output_element_DOK)
 
     if input_config['combination_operator'] == operator.truediv:
       return operator.truediv(resolved_arguments[0], resolved_arguments[1])
@@ -85,9 +100,24 @@ def hadamard(spark, gctf_model, update_rule):
       raise Exception('unknown combination_operator %s' %input_config)
 
   def compute_output_element(full_tensor_linear_index):
-    output_element_DOK = linear_index_to_tensor_index(gctf_model['tensors'], gctf_model['cardinalities'], full_tensor_linear_index, update_rule['output'])
+    output_element_DOK = linear_index_to_tensor_index(gctf_model['tensors'], gctf_model['config']['cardinalities'], full_tensor_linear_index, update_rule['output'])
     return compute_output_element_helper(update_rule['input'], output_element_DOK)
 
   sc = spark.sparkContext
-  rdd = sc.parallelize(xrange(gctf_model['tensors'][update_rule['output']]['numel']))
-  rdd1 = rdd.map(compute_output_element)
+  rdd = sc.parallelize(xrange(gctf_model['tensors'][update_rule['output']]['numel'])).map(compute_output_element)
+
+  df = spark.createDataFrame(rdd)
+  if 'filename' in gtp_spec['tensors'][output_tensor_name]:
+      filename = gtp_spec['tensors'][output_tensor_name]['filename']
+  else:
+      filename = '/'.join([gctf_data_path,output_tensor_name])+'.csv'
+      gtp_spec['tensors'][output_tensor_name]['filename'] = filename
+  #print('WAS')
+  #print(rdd.collect())
+  df.write.csv(filename, mode='overwrite')
+
+  #print( 'DF' )
+  #print(df.count(), len(df.columns))
+  #rdd1 = rdd.map(mapfunc)
+  #rdd2 = rdd1.reduceByKey(add)
+  return (df, filename)
