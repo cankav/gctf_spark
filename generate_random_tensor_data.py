@@ -18,15 +18,15 @@ def iter_indices_gen_data(tensors_config, cardinalities, tensor_name, fd, zero_b
         for index_val in range(cardinalities[iter_index_name]):
             iter_indices_gen_data( tensors_config, cardinalities, tensor_name, fd, zero_based_indices, iter_index_values+[index_val] )
 
-def generate_random_tensor_data(tensors_config, cardinalities, tensor_name, hdfs_data_path, zero_based_indices=False):
-    hdfs_filename='/'.join([hdfs_data_path, tensor_name+'.csv'])
-    tmp_filename=os.path.join('/tmp', tensor_name+'.csv')
-    print(tmp_filename)
-    print ('generate_random_tensor_data: generating %s' %hdfs_filename)
-    assert not os.path.exists(tmp_filename), 'data file %s exists can not procede' %tmp_filename
-    # TODO: add assert with hdfs_filename
+def generate_random_tensor_data_local(tensors_config, cardinalities, tensor_name, zero_based_indices=False):
+    # generate tensor data on local file
 
-    fd = open(tmp_filename, 'w')
+    local_filename=os.path.join('/tmp', tensor_name+'.csv')
+    print(local_filename)
+    print ('generate_random_tensor_data_local: generating %s' %local_filename)
+    assert not os.path.exists(local_filename), 'data file %s exists can not procede' %local_filename
+
+    fd = open(local_filename, 'w')
 
     # print header
     for index_index, index_name in enumerate(tensors_config[tensor_name]['indices']):
@@ -38,9 +38,7 @@ def generate_random_tensor_data(tensors_config, cardinalities, tensor_name, hdfs
     iter_indices_gen_data(tensors_config, cardinalities, tensor_name, fd, zero_based_indices)
     fd.close()
 
-    #cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(tmp_filename, hdfs_filename)
-    #print(cmd)
-    #os.system(cmd)
+    tensors_config[tensor_name]['local_filename'] = local_filename
 
 if __name__ == '__main__':
     from tests import gctf_model

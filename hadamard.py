@@ -2,6 +2,8 @@ from utils import linear_index_to_tensor_index
 import operator
 import functools
 from utils import gctf_data_path
+from utils import ComplexEncoder
+import json
 
 def hadamard(spark, gctf_model, update_rule):
   # 'input': {
@@ -46,8 +48,12 @@ def hadamard(spark, gctf_model, update_rule):
 
   def dok_filter(row, output_element_DOK):
     for index in output_element_DOK:
-      if row[index] != output_element_DOK[index]:
-        return False
+      try:
+        if row[index] != output_element_DOK[index]:
+          return False
+      except ValueError as e:
+        print('row %s output_element_DOK %s' %(row, output_element_DOK))
+        raise(e)
     return True
 
   def get_input_data_values(input_config, output_element_DOK):
@@ -61,11 +67,11 @@ def hadamard(spark, gctf_model, update_rule):
         #  print(input_data_value)
         #input_data_value = input_data_value.filter(str(index_name) + '=' + str(output_element_DOK[index_name]))
 
-        assert 'local_data' in gctf_model['tensors'][argument['data']], '%s does not have local_data field, not initialized?' %argument['data'] 
+        assert 'data_local' in gctf_model['tensors'][argument['data']], '%s does not have data_local field, not initialized?' %argument['data'] 
 
         # TODO: replace with rdd/df search
-        input_data_value = filter(lambda row: dok_filter(row, output_element_DOK), gctf_model['tensors'][argument['data']]['local_data'])
-        assert len(input_data_value) == 1, 'input_data_value must have exactly 1 element'
+        input_data_value = filter(lambda row: dok_filter(row, output_element_DOK), gctf_model['tensors'][argument['data']]['data_local'])
+        assert len(input_data_value) == 1, 'input_data_value must have exactly 1 element, found %s elements, output_element_DOK %s searching in argument key %s argument value %s' %(len(input_data_value), output_element_DOK, argument['data'], gctf_model['tensors'][argument['data']])
         input_data_value = input_data_value[0].value
 
         if 'pre_processor' in argument:
@@ -102,6 +108,8 @@ def hadamard(spark, gctf_model, update_rule):
   def compute_output_element(full_tensor_linear_index):
     output_element_DOK = linear_index_to_tensor_index(gctf_model['tensors'], gctf_model['config']['cardinalities'], full_tensor_linear_index, update_rule['output'])
     return compute_output_element_helper(update_rule['input'], output_element_DOK)
+
+  print('EXECUTING RULE: starting hadamard operation update_rule %s' %json.dumps( update_rule, indent=4, sort_keys=True, cls=ComplexEncoder ))
 
   sc = spark.sparkContext
   rdd = sc.parallelize(xrange(gctf_model['tensors'][update_rule['output']]['numel'])).map(compute_output_element)

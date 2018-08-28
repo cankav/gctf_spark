@@ -5,10 +5,13 @@ from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from gtp import gtp
 from utils import linear_index_to_tensor_index
-from utils import read_tensor_data
+from utils import read_tensor_data_from_hdfs
 from utils import gctf_data_path
 from hadamard import hadamard
-from generate_random_tensor_data import generate_random_tensor_data
+from generate_random_tensor_data import generate_random_tensor_data_local
+import os
+import json
+from utils import ComplexEncoder
 
 def get_observed_tensor_names_of_latent_tensor(gctf_model, ltn):
     otn_with_ltn=[]
@@ -243,10 +246,11 @@ def generate_tensor(gctf_model, tensor_name, indices):
     assert tensor_name not in gctf_model['tensors'], 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
 
     gctf_model['tensors'][tensor_name] = {
-        'indices' : indices
+        'indices' : indices,
+        'tags' : ['do_not_initialize_from_disk',]
     }
 
-    generate_random_tensor_data(gctf_model['tensors'], gctf_model['config']['cardinalities'], tensor_name, gctf_data_path)
+    #generate_random_tensor_data_local(gctf_model['tensors'], gctf_model['config']['cardinalities'], tensor_name)
 
 
 def gen_gtp(gctf_model, output_tensor_name, input_tensor_names):
@@ -265,6 +269,7 @@ def gen_gtp(gctf_model, output_tensor_name, input_tensor_names):
         gtp_spec['tensors'][itn] = gctf_model['tensors'][itn]
 
     return gtp_spec
+
 
 def gen_update_rules(gctf_model):
     # create intermediate tensors
@@ -296,7 +301,7 @@ def gen_update_rules(gctf_model):
     all_indices = list(all_indices)
 
     # add full tensor to the tensor list
-    gctf_model['tensors']['_gtp_full_tensor'] = {'indices':all_indices}
+    gctf_model['tensors']['_gtp_full_tensor'] = {'indices':all_indices, 'tags':['do_not_initialize_from_disk',]}
 
     # indices are assumed to be serialized left to right
     for tensor_name, tensor in gctf_model['tensors'].iteritems():
@@ -335,7 +340,6 @@ def gen_update_rules(gctf_model):
         # update Z_alpha with d1/d2
         update_Z_alpha(gctf_model, update_rules, ltn)
 
-    print(update_rules)
     return update_rules
 
 def calculate_divergence():
@@ -343,26 +347,37 @@ def calculate_divergence():
     
 
 def gctf(spark, gctf_model, iteration_num):
-    for input_tensor_name in gctf_model['tensors']:
-        if 'dataframe' not in gctf_model['tensors'][input_tensor_name]:
-            [rtd_data, gctf_model['tensors'][input_tensor_name]['filename']] = read_tensor_data(spark, input_tensor_name, gctf_data_path, gctf_model['tensors'][input_tensor_name]['indices'])
-            gctf_model['tensors'][input_tensor_name]['local_data'] = rtd_data.collect()
-            #print ('\n\n\n\n')
-            #print(gtp_spec['tensors'][input_tensor_name]['local_data'])
-            #print ('\n\n\n\n')
-        else:
-            print('info: Not re-initializing %s' %input_tensor_name)
-
-!_gtp_hat_gctf_test_X1 local data is not set
-
-            
     update_rules = gen_update_rules(gctf_model)
-    print update_rules
-    
+    fp = open('/tmp/rules', 'w')
+    json.dump( update_rules, fp, indent=4, sort_keys=True, cls=ComplexEncoder )
+    fp.close()
+
+    # put local data onto hdfs
+    local_files_str=''
+    for tensor_name in gctf_model['tensors']:
+        if 'do_not_initialize_from_disk' not in gctf_model['tensors'][tensor_name]['tags']:
+            local_files_str+=' ' + gctf_model['tensors'][tensor_name]['local_filename']
+    cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(local_files_str, gctf_data_path)
+    print( cmd )
+    os.system( cmd )
+    for tensor_name in gctf_model['tensors']:
+        if 'do_not_initialize_from_disk' in gctf_model['tensors'][tensor_name]['tags']:
+            filename = tensor_name
+        else:
+            filename = gctf_model['tensors'][tensor_name]['local_filename'].split('/')[-1]
+
+        gctf_model['tensors'][tensor_name]['hdfs_filename'] = '/'.join([gctf_data_path, filename])
+
+    # put hdfs data into spark memory
+    for tensor_name in gctf_model['tensors']:
+        assert 'data_local' not in gctf_model['tensors'][tensor_name], 'gctf: Tensor %s should not have dataframe loaded at this point' %tensor_name
+        if 'do_not_initialize_from_disk' not in gctf_model['tensors'][tensor_name]['tags']:
+            read_tensor_data_from_hdfs(spark, tensor_name, gctf_data_path, gctf_model['tensors'][tensor_name])
+
     for epoch_index in range(iteration_num):
         for update_rule in update_rules:
             if update_rule['operation_type'] == 'gtp':
-                gtp(spark, update_rule['gtp_spec'])
+                gtp(spark, update_rule['gtp_spec'], gctf_model)
             elif update_rule['operation_type'] == 'hadamard':
                 hadamard(spark, gctf_model, update_rule)
             else:
@@ -372,6 +387,11 @@ def gctf(spark, gctf_model, iteration_num):
 
 if __name__ == '__main__':
     from tests import gctf_model
+
+    for tensor_name in gctf_model['tensors']:
+        if 'do_not_initialize_from_disk' not in gctf_model['tensors'][tensor_name]['tags']:
+            generate_random_tensor_data_local(gctf_model['tensors'], gctf_model['config']['cardinalities'], tensor_name, zero_based_indices=True)
+
     spark = SparkSession.builder.appName("gtp").getOrCreate()
     gctf(spark, gctf_model, 10)
     spark.stop()
