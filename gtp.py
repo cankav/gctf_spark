@@ -2,30 +2,12 @@ from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from operator import add
 from utils import read_tensor_data_from_hdfs
-from utils import linear_index_to_tensor_index
+from utils import linear_index_to_DOK_index
 from utils import gctf_data_path
 import os
 from utils import ComplexEncoder
 import json
 from utils import get_all_indices
-
-def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
-    tensor_spec = gtp_spec['tensors'][input_tensor_name]
-    tensor_data = tensor_spec['data_local']
-
-    #for tiv in tensor_index_values:
-    #    tensor_data.filter(str(tiv) + '=' + str(tensor_index_values[tiv]))
-    #return tensor_data
-
-    for row in tensor_data:
-        matched_index_count = 0
-        for tensor_index_name in tensor_spec['indices']:
-            if row[tensor_index_name] == tensor_index_values[tensor_index_name]:
-                matched_index_count += 1
-        if matched_index_count == len(tensor_spec['indices']):
-            print('was %s' %str(row))
-            return row['value']
-    return None
 
 # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
 # def mapfunc(full_tensor_linear_index):
@@ -50,36 +32,51 @@ def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
 #     else:
 #         # convert full_tensor_linear_index to output full index
 #         output_tensor_index = linear_index_to_tensor_index( gtp_spec['tensors'], gtp_spec['config']['cardinalities'], full_tensor_linear_index, full_tensor_name, gtp_spec['config']['output'], as_dict=False )
-#         return (output_tensor_index, output_value)        
+#         return (output_tensor_index, output_value)            
 
-# map function to calculate each entry of the full tensor and compute one or more results output tensor indices
-def mapfunc(full_tensor_linear_index):
-    
+def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
+    # filter tensor_dataframe for indices if index name appears on tensor indices
+    full_tensor 
+
+
+    # tensor_spec = gtp_spec['tensors'][input_tensor_name]
+    # tensor_data = tensor_spec['data_local']
+
+    # #for tiv in tensor_index_values:
+    # #    tensor_data.filter(str(tiv) + '=' + str(tensor_index_values[tiv]))
+    # #return tensor_data
+
+    # for row in tensor_data:
+    #     matched_index_count = 0
+    #     for tensor_index_name in tensor_spec['indices']:
+    #         if row[tensor_index_name] == tensor_index_values[tensor_index_name]:
+    #             matched_index_count += 1
+    #     if matched_index_count == len(tensor_spec['indices']):
+    #         print('was %s' %str(row))
+    #         return row['value']
+    # return None
 
 def gtp(spark, gtp_spec, tensor_dataframe, gctf_model=None):
     print('EXECUTING RULE: starting GTP operation gtp_spec %s' %json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ))
 
-    full_tensor_name = '_gtp_full_tensor'
+    full_tensor_name='_gtp_full_tensor'
     if full_tensor_name not in gtp_spec['tensors']:
+        print('creating full tensor for gtp')
 
-        # add full tensor to the tensor list
-        gtp_spec['tensors']['_gtp_full_tensor'] = {'indices':get_all_indices(gtp_spec['tensors']), 'tags':['do_not_initialize_from_disk',]}
+        cards=gtp_spec['config']['cardinalities']
+        generate_tensor(gtp_spec['tensors'], cards, full_tensor_name, cards.keys(), tags=[], generate_local_data=True)
+        cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(gtp_spec['tensors'][full_tensor_name][local_filename], gctf_data_path)
+        print( cmd )
+        os.system( cmd )
 
-        # indices are assumed to be serialized left to right
-        for tensor_name, tensor in gtp_spec['tensors'].iteritems():
-            # tensor['strides'] = []
-            # current_stride = 1
-            tensor['numel'] = 1
-            for tensor_index_name in tensor['indices']:
-                #tensor['strides'].append(current_stride)
-                #current_stride *= gtp_spec['config']['cardinalities'][tensor_index_name]
-                tensor['numel'] *= gtp_spec['config']['cardinalities'][tensor_index_name]
+    #rdd = sc.parallelize(xrange(gtp_spec['tensors']['_gtp_full_tensor']['numel']))
+    #rdd = rdd.map(mapfunc).reduceByKey(add)
 
-        print ('gtp_spec %s' % gtp_spec)
+    # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
+    def mapfunc(full_tensor_linear_index):
+        tensor_dataframe.filter()
 
-    sc = spark.sparkContext
-    rdd = sc.parallelize(xrange(gtp_spec['tensors']['_gtp_full_tensor']['numel']))
-    rdd = rdd.map(mapfunc).reduceByKey(add)
+    tensor_dataframe.rdd.map(mapfunc).reduceByKey(add)
 
     # # reformat structure ( ((i,j,k), value), ... ) -> ( (i,j,k,value), ... )
     # def build_row(indices_value_tuple):
@@ -124,40 +121,29 @@ if __name__ == '__main__':
         },
         'tensors' : {
             'gtp_test_output' : {
-                'indices' : [ 'i', 'j' ],
-                'local_filename' : '/home/sprk/shared/gctf_data/gtp_test_output.csv',
-                'tags' : ['do_not_initialize_from_disk',]
+                'indices' : [ 'i', 'j' ]
             },
             'gtp_test_input1' : {
                 'indices' : [ 'i', 'k' ],
-                'local_filename' : '/home/sprk/shared/gctf_data/gtp_test_input1.csv',
-                'tags' : []
+                'local_filename' : '/home/sprk/shared/gctf_data/gtp_test_input1.csv'
             },
             'gtp_test_input2' : {
                 'indices' :  [ 'j', 'k' ],
                 'local_filename' : '/home/sprk/shared/gctf_data/gtp_test_input2.csv',
-                'tags' : []
             }
         }
     }
 
     spark = SparkSession.builder.appName("gtp").getOrCreate()
 
-    # put local data onto hdfs
+    # put input local data onto hdfs
     local_files_str=''
     for tensor_name in gtp_spec['tensors']:
-        if 'do_not_initialize_from_disk' not in gtp_spec['tensors'][tensor_name]['tags']:
+        if 'local_filename' in gtp_spec['tensors'][tensor_name]:
             local_files_str+=' ' + gtp_spec['tensors'][tensor_name]['local_filename']
     cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(local_files_str, gctf_data_path)
     print( cmd )
     os.system( cmd )
-    for tensor_name in gtp_spec['tensors']:
-        if 'do_not_initialize_from_disk' in gtp_spec['tensors'][tensor_name]['tags']:
-            filename = tensor_name
-        else:
-            filename = gtp_spec['tensors'][tensor_name]['local_filename'].split('/')[-1]
-
-        gtp_spec['tensors'][tensor_name]['hdfs_filename'] = '/'.join([gctf_data_path, filename])
 
     # put hdfs data into spark memory
     tensor_dataframe = None

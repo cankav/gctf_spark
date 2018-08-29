@@ -242,17 +242,6 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
         update_rules.append(rule)
 
 
-def generate_tensor(gctf_model, tensor_name, indices):
-    assert tensor_name not in gctf_model['tensors'], 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
-
-    gctf_model['tensors'][tensor_name] = {
-        'indices' : indices,
-        'tags' : ['do_not_initialize_from_disk',]
-    }
-
-    #generate_random_tensor_data_local(gctf_model['tensors'], gctf_model['config']['cardinalities'], tensor_name)
-
-
 def gen_gtp(gctf_model, output_tensor_name, input_tensor_names):
     gtp_spec = {
         'config' : {
@@ -345,6 +334,11 @@ def gen_update_rules(gctf_model):
 def calculate_divergence():
     pass
     
+
+
+
+!!!! place _gtp_full_tensor tensor definition in tensors config for each gtp
+
 
 def gctf(spark, gctf_model, iteration_num):
     update_rules = gen_update_rules(gctf_model)
