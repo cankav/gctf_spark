@@ -7,6 +7,7 @@ from utils import gctf_data_path
 import os
 from utils import ComplexEncoder
 import json
+from utils import get_all_indices
 
 def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
     tensor_spec = gtp_spec['tensors'][input_tensor_name]
@@ -26,71 +27,69 @@ def find_tensor_value(gtp_spec, input_tensor_name, tensor_index_values):
             return row['value']
     return None
 
-def gtp(spark, gtp_spec, gctf_model=None):
+# map function to calculate each entry of the full tensor and compute one or more results output tensor indices
+# def mapfunc(full_tensor_linear_index):
+#     print( '\n\nf %s' %full_tensor_linear_index)
+#     # calculate dimension indices from linear index,
+#     full_tensor_index_values = linear_index_to_tensor_index( gtp_spec['tensors'], gtp_spec['config']['cardinalities'], full_tensor_linear_index, full_tensor_name)
+
+#     # fetch corresponding input tensor values
+#     # multiply them and return (linear index, output_value)
+#     output_value = None
+#     for input_tensor_name in gtp_spec['config']['input']:
+#         input_tensor_value = find_tensor_value(gtp_spec, input_tensor_name, full_tensor_index_values) #spark.sql(query)
+#         if input_tensor_value is not None:
+#             if output_value is None:
+#                 output_value = input_tensor_value
+#             else:
+#                 output_value *= input_tensor_value
+#     print( 'full_tensor_index_values %s' %full_tensor_index_values )
+#     print( 'output_value %s' %output_value )
+#     if output_value is None:
+#         return None
+#     else:
+#         # convert full_tensor_linear_index to output full index
+#         output_tensor_index = linear_index_to_tensor_index( gtp_spec['tensors'], gtp_spec['config']['cardinalities'], full_tensor_linear_index, full_tensor_name, gtp_spec['config']['output'], as_dict=False )
+#         return (output_tensor_index, output_value)        
+
+# map function to calculate each entry of the full tensor and compute one or more results output tensor indices
+def mapfunc(full_tensor_linear_index):
+    
+
+def gtp(spark, gtp_spec, tensor_dataframe, gctf_model=None):
     print('EXECUTING RULE: starting GTP operation gtp_spec %s' %json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ))
 
-    # get all indices
     full_tensor_name = '_gtp_full_tensor'
     if full_tensor_name not in gtp_spec['tensors']:
-        all_indices = set()
-        for tensor_name, tensor in gtp_spec['tensors'].iteritems():
-            all_indices.update( tensor['indices'] )
-        # all_indices must have fixed ordering
-        all_indices = list(all_indices)
 
         # add full tensor to the tensor list
-        gtp_spec['tensors']['_gtp_full_tensor'] = {'indices':all_indices, 'tags':['do_not_initialize_from_disk',]}
+        gtp_spec['tensors']['_gtp_full_tensor'] = {'indices':get_all_indices(gtp_spec['tensors']), 'tags':['do_not_initialize_from_disk',]}
 
         # indices are assumed to be serialized left to right
         for tensor_name, tensor in gtp_spec['tensors'].iteritems():
-            tensor['strides'] = []
-            current_stride = 1
+            # tensor['strides'] = []
+            # current_stride = 1
             tensor['numel'] = 1
             for tensor_index_name in tensor['indices']:
-                tensor['strides'].append(current_stride)
-                current_stride *= gtp_spec['config']['cardinalities'][tensor_index_name]
+                #tensor['strides'].append(current_stride)
+                #current_stride *= gtp_spec['config']['cardinalities'][tensor_index_name]
                 tensor['numel'] *= gtp_spec['config']['cardinalities'][tensor_index_name]
 
         print ('gtp_spec %s' % gtp_spec)
-
-    # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
-    def mapfunc(full_tensor_linear_index):
-        print( '\n\nf %s' %full_tensor_linear_index)
-        # calculate dimension indices from linear index,
-        full_tensor_index_values = linear_index_to_tensor_index( gtp_spec['tensors'], gtp_spec['config']['cardinalities'], full_tensor_linear_index, full_tensor_name)
-
-        # fetch corresponding input tensor values
-        # multiply them and return (linear index, output_value)
-        output_value = None
-        for input_tensor_name in gtp_spec['config']['input']:
-            input_tensor_value = find_tensor_value(gtp_spec, input_tensor_name, full_tensor_index_values) #spark.sql(query)
-            if input_tensor_value is not None:
-                if output_value is None:
-                    output_value = input_tensor_value
-                else:
-                    output_value *= input_tensor_value
-        print( 'full_tensor_index_values %s' %full_tensor_index_values )
-        print( 'output_value %s' %output_value )
-        if output_value is None:
-            return None
-        else:
-            # convert full_tensor_linear_index to output full index
-            output_tensor_index = linear_index_to_tensor_index( gtp_spec['tensors'], gtp_spec['config']['cardinalities'], full_tensor_linear_index, full_tensor_name, gtp_spec['config']['output'], as_dict=False )
-            return (output_tensor_index, output_value)
 
     sc = spark.sparkContext
     rdd = sc.parallelize(xrange(gtp_spec['tensors']['_gtp_full_tensor']['numel']))
     rdd = rdd.map(mapfunc).reduceByKey(add)
 
-    # reformat structure ( ((i,j,k), value), ... ) -> ( (i,j,k,value), ... )
-    def build_row(indices_value_tuple):
-        row = [indices_value_tuple[1]]
-        for i in indices_value_tuple[0]:
-            row.insert(0,i)
-        return list(row)
+    # # reformat structure ( ((i,j,k), value), ... ) -> ( (i,j,k,value), ... )
+    # def build_row(indices_value_tuple):
+    #     row = [indices_value_tuple[1]]
+    #     for i in indices_value_tuple[0]:
+    #         row.insert(0,i)
+    #     return list(row)
 
     output_tensor_name = gtp_spec['config']['output']
-    rdd = rdd.map( lambda x: build_row(x), gtp_spec['tensors'][output_tensor_name]['indices'])
+    #rdd = rdd.map( lambda x: build_row(x), gtp_spec['tensors'][output_tensor_name]['indices'])
 
     df = spark.createDataFrame(rdd) -- MUST ADD SCHEMA HERE
     if 'filename' in gtp_spec['tensors'][output_tensor_name]:
@@ -161,12 +160,13 @@ if __name__ == '__main__':
         gtp_spec['tensors'][tensor_name]['hdfs_filename'] = '/'.join([gctf_data_path, filename])
 
     # put hdfs data into spark memory
+    tensor_dataframe = None
     for tensor_name in gtp_spec['config']['input']:
         assert 'data_local' not in gtp_spec['tensors'][tensor_name], 'gtp: Tensor %s should not have dataframe loaded at this point' %tensor_name
         if 'do_not_initialize_from_disk' not in gtp_spec['tensors'][tensor_name]['tags']:
-            read_tensor_data_from_hdfs(spark, tensor_name, gctf_data_path, gtp_spec['tensors'][tensor_name])
+            tensor_dataframe = read_tensor_data_from_hdfs(spark, tensor_dataframe, gtp_spec['tensors'], tensor_name, gctf_data_path)
 
-    [df, output_filename] = gtp(spark, gtp_spec)
+    [df, output_filename] = gtp(spark, gtp_spec, tensor_dataframe)
 
     # TODO: automatic check of the matrix product
 
