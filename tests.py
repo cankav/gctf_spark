@@ -24,23 +24,18 @@ gctf_model = {
     'tensors' : {
         'gctf_test_X1' : {
             'indices' : [ 'i', 'j' ],
-            'tags' : []
         },
         'gctf_test_X2' : {
             'indices' : [ 'i', 'r' ],
-            'tags' : []
         },
         'gctf_test_Z1' : {
             'indices' : [ 'i', 'k' ],
-            'tags' : []
         },
         'gctf_test_Z2' : {
             'indices' : [ 'k', 'j' ],
-            'tags' : []
         },
         'gctf_test_Z3' : {
             'indices' : [ 'k', 'r' ],
-            'tags' : []
         }
     }
 }

@@ -2,7 +2,7 @@ import json
 import operator
 import os
 import random
-
+from pyspark.sql.functions import lit
 gctf_data_path='hdfs://spark-master0-dsl05:9000/gctf_data' #'/home/sprk/shared/gctf_data'
 
 
@@ -45,17 +45,16 @@ def generate_random_tensor_data_local(all_tensors_config, cardinalities, tensor_
 
     all_tensors_config[tensor_name]['local_filename'] = local_filename
 
-def generate_tensor(all_tensors_config, cardinalities, tensor_name, indices, tags=['do_not_initialize_from_disk',], generate_local_data=False):
+def generate_local_tensor_data(all_tensors_config, cardinalities, tensor_name, indices, generate_local_data=False):
     assert tensor_name not in all_tensors_config, 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
 
     all_tensors_config[tensor_name] = {
         'indices' : indices,
-        'tags' : tags,
-        'numel' : reduce(operator.mul, indices)
+        'numel' : reduce(operator.mul, [cardinalities[i] for i in indices])
     }
 
     if generate_local_data:
-        generate_random_tensor_data_local(all_tensors_config, gctf_model['config']['cardinalities'], tensor_name)
+        generate_random_tensor_data_local(all_tensors_config, cardinalities, tensor_name)
 
 def get_all_indices(all_tensors_config):
     all_indices = set()
@@ -65,14 +64,9 @@ def get_all_indices(all_tensors_config):
     return list(sorted(all_indices))
 
 def read_tensor_data_from_hdfs(spark_session, tensor_dataframe, all_tensors_config, tensor_name, root_path):
-    print( 'initializing data_local for %s using file %s as %s' %(tensor_name, hdfs_filename, tensor_def['data_local']) )
-
-    if tensor_dataframe is None:
-        print('read_tensor_data_from_hdfs: initializing tensor_dataframe as emptyRDD')
-        tensor_dataframe = spark_session.emptyRDD()
-
     tensor_def = all_tensors_config[tensor_name]
     hdfs_filename = tensor_def['hdfs_filename'] # TODO assert for hdfs file existance
+    print( 'initializing data_local for %s using file %s' %(tensor_name, hdfs_filename) )
 
     schema = ''
     for index_index, index in enumerate(tensor_def['indices']):
@@ -89,12 +83,17 @@ def read_tensor_data_from_hdfs(spark_session, tensor_dataframe, all_tensors_conf
     # add missing columns
     missing_columns = set(get_all_indices(all_tensors_config))-set(tensor_def['indices'])
     for mc in missing_columns:
-        tensor_data = tensor_data.withColumn(mc, None)
+        tensor_data = tensor_data.withColumn(mc, lit(None))
 
     # add tensor name column
-    tensor_data = tensor_data.withColumn('tensor_name', tensor_name)
+    tensor_data = tensor_data.withColumn('tensor_name', lit(tensor_name))
 
-    tensor_dataframe = tensor_dataframe.unionByName(tensor_data)
+    if tensor_dataframe is None:
+        print('read_tensor_data_from_hdfs: initializing tensor_dataframe')
+        tensor_dataframe = tensor_data
+    else:
+        print('read_tensor_data_from_hdfs: update tensor_dataframe')
+        tensor_dataframe = tensor_dataframe.unionByName(tensor_data)
     tensor_dataframe.cache()
 
 def linear_index_to_DOK_index(linear_index, tensor_indices, all_cardinalities):
