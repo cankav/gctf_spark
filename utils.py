@@ -13,9 +13,9 @@ def iter_indices_gen_data(all_tensors_config, cardinalities, tensor_name, fd, ze
             if iiv_index != 0:
                 fd.write(',')
             if zero_based_indices:
-                iiv_str = str( iiv + 1 )
-            else:
                 iiv_str = str( iiv )
+            else:
+                iiv_str = str( iiv + 1 )
             fd.write( iiv_str )
         fd.write( ',%.5f\n' %random.random() )
     else:
@@ -66,7 +66,7 @@ def get_all_indices(all_tensors_config):
 def read_tensor_data_from_hdfs(spark_session, tensor_dataframe, all_tensors_config, tensor_name, root_path):
     tensor_def = all_tensors_config[tensor_name]
     hdfs_filename = tensor_def['hdfs_filename'] # TODO assert for hdfs file existance
-    print( 'initializing data_local for %s using file %s' %(tensor_name, hdfs_filename) )
+    print( 'read_tensor_data_from_hdfs: populate tensor_dataframe for tensor %s using file %s' %(tensor_name, hdfs_filename) )
 
     schema = ''
     for index_index, index in enumerate(tensor_def['indices']):
@@ -94,7 +94,9 @@ def read_tensor_data_from_hdfs(spark_session, tensor_dataframe, all_tensors_conf
     else:
         print('read_tensor_data_from_hdfs: update tensor_dataframe')
         tensor_dataframe = tensor_dataframe.unionByName(tensor_data)
+
     tensor_dataframe.cache()
+    return tensor_dataframe
 
 def linear_index_to_DOK_index(linear_index, tensor_indices, all_cardinalities):
     # linear index calculated per tensor using tensor's indices
