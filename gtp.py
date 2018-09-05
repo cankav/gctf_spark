@@ -10,48 +10,48 @@ import json
 from utils import get_all_indices
 from utils import generate_local_tensor_data
 
+    # # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
+    # def compute_full_tensor(tensor_dataframe_row):
+    #     if tensor_dataframe_row['tensor_name'] == full_tensor_name:
+    #         # find input elements for this row of full tensor entry
+    #         new_f_tensor_value = 1
+    #         for tensor_name in gtp_spec['config']['input']:
+    #             input_value = 1 # tensor_dataframe.filter(tensor_name=tensor_name)
+    #             for index_name in gtp_spec['config']['cardinalities']:
+    #                 input_value = 3 # input_value.filter(index_name==tensor_dataframe_row[index_name] | index_name)
+    #             #assert len(input_value) == 1, 'each f tensor entry must correspond to a distinct row for each input tensor'
+    #             new_f_tensor_value *= input_value #[0]['value']
+    #         print('old value %s new value %s' %(tensor_dataframe_row.value, new_f_tensor_value))
+    #         tensor_dataframe_row.value = new_f_tensor_value
+            
+    #         return tensor_dataframe_row
+    #     else:
+    #         return tensor_dataframe_row
+
+    # tensor_dataframe = tensor_dataframe.rdd.map(compute_full_tensor) #.map(compute_output_tensor)
+
+
 def gtp(spark, gtp_spec, tensor_dataframe, gctf_model=None):
     print('EXECUTING RULE: starting GTP operation gtp_spec %s' %json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ))
 
     full_tensor_name='gtp_full_tensor'
     if full_tensor_name not in gtp_spec['tensors']:
-        print('creating full tensor for gtp')
-
+        print('gtp: creating full tensor')
         cards=gtp_spec['config']['cardinalities']
-        # TODO: replace with streaming data generation instead of file transfer to remove file size limitation
-        generate_local_tensor_data(gtp_spec['tensors'], cards, full_tensor_name, cards.keys(), generate_local_data=True)
-        cmd = "$HADOOP_HOME/bin/hadoop fs -put %s %s" %(gtp_spec['tensors'][full_tensor_name]['local_filename'], gctf_data_path)
-        print( cmd )
-        os.system( cmd )
-        # load hdfs data into spark
-        gtp_spec['tensors'][full_tensor_name]['hdfs_filename'] = '/'.join([gctf_data_path, full_tensor_name+'.csv'])
-        tensor_dataframe = read_tensor_data_from_hdfs(spark, tensor_dataframe, gtp_spec['tensors'], full_tensor_name, gctf_data_path)
+        generate_hdfs_tensor_data(gtp_spec['tensors'], cards, full_tensor_name, cards.keys())
+        gtp_spec['tensors'][full_tensor_name]['df'] = read_tensor_data_from_hdfs(spark, tensor_dataframe, gtp_spec['tensors'], full_tensor_name, gctf_data_path)
     else:
         # clear full tensor elements not necessary because all entries will be re-calculated
-        print('full tensor for gtp already created')
+        print('gtp: full tensor for gtp already created')
         pass
 
-    # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
-    def compute_full_tensor(tensor_dataframe_row):
-        if tensor_dataframe_row['tensor_name'] == full_tensor_name:
-            # find input elements for this row of full tensor entry
-            new_f_tensor_value = 1
-            for tensor_name in gtp_spec['config']['input']:
-                input_value = 1 # tensor_dataframe.filter(tensor_name=tensor_name)
-                for index_name in gtp_spec['config']['cardinalities']:
-                    input_value = 3 # input_value.filter(index_name==tensor_dataframe_row[index_name] | index_name)
-                #assert len(input_value) == 1, 'each f tensor entry must correspond to a distinct row for each input tensor'
-                new_f_tensor_value *= input_value #[0]['value']
-            print('old value %s new value %s' %(tensor_dataframe_row.value, new_f_tensor_value))
-            tensor_dataframe_row.value = new_f_tensor_value
-            
-            return tensor_dataframe_row
-        else:
-            return tensor_dataframe_row
+    F_df_joined = gtp_spec['tensors'][full_tensor_name]['df']
+    for input_tensor_name in gtp_spec['config']['input']:
+        F_df_joined.join( gtp_spec['tensors'][input_tensor_name]['df'], gtp_spec['tensors'][input_tensor_name]['indices'] )
 
-    tensor_dataframe = tensor_dataframe.rdd.map(compute_full_tensor) #.map(compute_output_tensor)
+    output_tensor_name = gtp_spec['config']['output']
+    gtp_spec['tensors'][output_tensor_name]['df'] = output
 
-    return tensor_dataframe
 
 if __name__ == '__main__':
     gtp_spec = {
@@ -91,15 +91,14 @@ if __name__ == '__main__':
     os.system( cmd )
 
     # load hdfs data into spark
-    tensor_dataframe = None # TODO: what if no input data is loaded?
     for tensor_name in gtp_spec['config']['input']:
         if 'local_filename' in gtp_spec['tensors'][tensor_name]:
             gtp_spec['tensors'][tensor_name]['hdfs_filename'] = '/'.join([gctf_data_path, gtp_spec['tensors'][tensor_name]['local_filename'].split('/')[-1]])
-            tensor_dataframe = read_tensor_data_from_hdfs(spark, tensor_dataframe, gtp_spec['tensors'], tensor_name, gctf_data_path)
+            gtp_spec['tensors'][tensor_name]['df'] =  read_tensor_data_from_hdfs(spark, gtp_spec['tensors'], tensor_name, gctf_data_path)
 
-    tensor_dataframe = gtp(spark, gtp_spec, tensor_dataframe)
+    gtp(spark, gtp_spec)
 
-    for row in tensor_dataframe.collect():
+    for row in gtp_spec['tensors'][output_tensor_name]['df'].collect():
         print row
 
     # TODO: automatic check of the matrix product

@@ -337,7 +337,7 @@ def calculate_divergence():
 
 
 
-!!!! place _gtp_full_tensor tensor definition in tensors config for each gtp
+!!!! place gtp_full_tensor tensor definition in tensors config for each gtp
 
 
 def gctf(spark, gctf_model, iteration_num):
