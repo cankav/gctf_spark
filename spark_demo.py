@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql import Row
 from pyspark.sql.functions import lit
+import operator
 
 spark = SparkSession.builder.appName("spark_demo").getOrCreate()
 
@@ -20,14 +21,14 @@ df_i2 = spark.read.load('hdfs://spark-master0-dsl05:9000/gctf_data/gtp_test_inpu
                      schema='j INT ,k INT , value DOUBLE')
 #df_i2.show()
 
-df = df_f.join( df_i1, ( (df_f.i == df_i1.i) & (df_f.k == df_i1.k) ),'inner').join( df_i2, ( ((df_f.j == df_i2.j)) & (df_f.k == df_i2.k) ),'inner' ).withColumn('output', df_i1.value * df_i2.value)
+#df = df_f.join( df_i1, ( (df_f.i == df_i1.i) & (df_f.k == df_i1.k) ),'inner').join( df_i2, ( ((df_f.j == df_i2.j)) & (df_f.k == df_i2.k) ),'inner' ).withColumn('output', df_i1.value * df_i2.value).groupBy([df_f['i'], df_f['j']]).sum('output')
+#df.show(n=1000)
 
-df.show(n=1000)
-
-df_joined = df
-df_joined = df_joined.join( df_i1, ( ((df_f.i == df_i1.i)) & (df_f.k == df_i1.k) ),'inner')
-df_joined = df_joined.join( df_i2, ( ((df_f.j == df_i2.j)) & (df_f.k == df_i2.k) ),'inner' )
-df_joined.withColumn('output', df_i1.value * df_i2.value).groupBy([df_joined['i'], df_joined['j']]).sum('output').show(n=1000)
+df_joined = df_f
+df_joined = df_joined.join( df_i1, ['i','k'],'inner')
+df_joined = df_joined.join( df_i2, ['j','k'],'inner' )
+col_list = [df_i1['value'], df_i2['value'] ]
+df_joined.withColumn('output', reduce( operator.mul, col_list )).groupBy(['i','j']).sum('output').show(n=1000)
 
 
 # +---+---+-----------+

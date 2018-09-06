@@ -4,8 +4,10 @@ import os
 import random
 from pyspark.sql.functions import lit
 from hdfs import InsecureClient
+from pyspark.sql import DataFrame
 
 gctf_data_path='hdfs://spark-master0-dsl05:9000/gctf_data' #'/home/sprk/shared/gctf_data'
+gctf_data_path_no_url='/gctf_data'
 
 def iter_indices_gen_data(all_tensors_config, cardinalities, tensor_name, fd, zero_based_indices, iter_index_values=[]):
     tensor_index_names = all_tensors_config[tensor_name]['indices']
@@ -46,24 +48,25 @@ def generate_random_tensor_data_local(all_tensors_config, cardinalities, tensor_
 
     all_tensors_config[tensor_name]['local_filename'] = local_filename
 
-def generate_random_tensor_data_hdfs(all_tensors_config, cardinalities, tensor_name, zero_based_indices=False, hdfs_url='http://spark-master0-dsl05:50070'
+def generate_random_tensor_data_hdfs(all_tensors_config, cardinalities, tensor_name, zero_based_indices=False, hdfs_url='http://spark-master0-dsl05:50070',
 hdfs_user='sprk'):
     # generate tensor data on local file
 
-    hdfs_filename=os.path.join(gctf_data_path, tensor_name+'.csv')
+    hdfs_filename=os.path.join(gctf_data_path_no_url, tensor_name+'.csv')
     print ('generate_random_tensor_data_hdfs: generating %s' %hdfs_filename)
 
     client = InsecureClient(hdfs_url, user=hdfs_user)
     assert client.status(hdfs_filename, strict=False) is None, 'data file %s exists can not procede' %hdfs_filename
 
-    fd = client.write(hdfs_filename, encoding='utf-8')
-    write_header(all_tensors_config, tensor_name, fd)
-    iter_indices_gen_data(all_tensors_config, cardinalities, tensor_name, fd, zero_based_indices)
-    # fd.close() # TODO: hdfs client api does not specify close?
+    print ('wft %s' %hdfs_filename)
+    with client.write(hdfs_filename, encoding='utf-8') as writer:
+        write_header(all_tensors_config, tensor_name, writer)
+        iter_indices_gen_data(all_tensors_config, cardinalities, tensor_name, writer, zero_based_indices)
+        # fd.close() # TODO: hdfs client api does not specify close?
 
     all_tensors_config[tensor_name]['hdfs_filename'] = hdfs_filename
 
-def add_tensor_to_all_tensors():
+def add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices, cardinalities):
     all_tensors_config[tensor_name] = {
         'indices' : indices,
         'numel' : reduce(operator.mul, [cardinalities[i] for i in indices])
@@ -71,12 +74,12 @@ def add_tensor_to_all_tensors():
 
 def generate_local_tensor_data(all_tensors_config, cardinalities, tensor_name, indices):
     assert tensor_name not in all_tensors_config, 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
-    add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices)
+    add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices, cardinalities)
     generate_random_tensor_data_local(all_tensors_config, cardinalities, tensor_name)
 
 def generate_hdfs_tensor_data(all_tensors_config, cardinalities, tensor_name, indices):
     assert tensor_name not in all_tensors_config, 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
-    add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices)
+    add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices, cardinalities)
     generate_random_tensor_data_hdfs(all_tensors_config, cardinalities, tensor_name)
 
 def get_all_indices(all_tensors_config):
@@ -155,5 +158,7 @@ class ComplexEncoder(json.JSONEncoder):
             return '/'
         elif obj == operator.add:
             return '+'
+        elif isinstance(obj, DataFrame):
+            return str(obj)
 
         return json.JSONEncoder.default(self, obj)

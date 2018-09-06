@@ -8,7 +8,9 @@ import os
 from utils import ComplexEncoder
 import json
 from utils import get_all_indices
-from utils import generate_local_tensor_data
+#from utils import generate_local_tensor_data
+from utils import generate_hdfs_tensor_data
+import operator
 
     # # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
     # def compute_full_tensor(tensor_dataframe_row):
@@ -31,7 +33,7 @@ from utils import generate_local_tensor_data
     # tensor_dataframe = tensor_dataframe.rdd.map(compute_full_tensor) #.map(compute_output_tensor)
 
 
-def gtp(spark, gtp_spec, tensor_dataframe, gctf_model=None):
+def gtp(spark, gtp_spec, gctf_model=None):
     print('EXECUTING RULE: starting GTP operation gtp_spec %s' %json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ))
 
     full_tensor_name='gtp_full_tensor'
@@ -39,18 +41,25 @@ def gtp(spark, gtp_spec, tensor_dataframe, gctf_model=None):
         print('gtp: creating full tensor')
         cards=gtp_spec['config']['cardinalities']
         generate_hdfs_tensor_data(gtp_spec['tensors'], cards, full_tensor_name, cards.keys())
-        gtp_spec['tensors'][full_tensor_name]['df'] = read_tensor_data_from_hdfs(spark, tensor_dataframe, gtp_spec['tensors'], full_tensor_name, gctf_data_path)
+        gtp_spec['tensors'][full_tensor_name]['df'] = read_tensor_data_from_hdfs(spark, gtp_spec['tensors'], full_tensor_name, gctf_data_path)
     else:
         # clear full tensor elements not necessary because all entries will be re-calculated
         print('gtp: full tensor for gtp already created')
         pass
 
-    F_df_joined = gtp_spec['tensors'][full_tensor_name]['df']
+    # Calculate F tensor
+    F_df = gtp_spec['tensors'][full_tensor_name]['df']
+    multiply_column_list = []
     for input_tensor_name in gtp_spec['config']['input']:
-        F_df_joined.join( gtp_spec['tensors'][input_tensor_name]['df'], gtp_spec['tensors'][input_tensor_name]['indices'] )
-
+        F_df = F_df.join( gtp_spec['tensors'][input_tensor_name]['df'], gtp_spec['tensors'][input_tensor_name]['indices'], 'inner' )
+        multiply_column_list.append(gtp_spec['tensors'][input_tensor_name]['df'].value)
+    F_df = F_df.withColumn('f_tensor_value', reduce( operator.mul, multiply_column_list ))
+    
+    # Calculate output tensor
     output_tensor_name = gtp_spec['config']['output']
-    gtp_spec['tensors'][output_tensor_name]['df'] = output
+    output_df = F_df.groupBy(gtp_spec['tensors'][output_tensor_name]['indices']).sum('f_tensor_value')
+
+    gtp_spec['tensors'][output_tensor_name]['df'] = output_df
 
 
 if __name__ == '__main__':
@@ -98,10 +107,27 @@ if __name__ == '__main__':
 
     gtp(spark, gtp_spec)
 
-    for row in gtp_spec['tensors'][output_tensor_name]['df'].collect():
-        print row
+    output_tensor_name = gtp_spec['config']['output']
+    print('gtp: computed output')
+    gtp_spec['tensors'][output_tensor_name]['df'].show(n=1000)
 
-    # TODO: automatic check of the matrix product
+    for row in gtp_spec['tensors'][output_tensor_name]['df'].collect():
+        if row.i == 1 and row.j == 1:
+            assert row['sum(f_tensor_value)'] == 11800, 'wrong output %s' %row
+        elif row.i == 1 and row.j == 2:
+            assert row['sum(f_tensor_value)'] == 13400, 'wrong output %s' %row
+        elif row.i == 1 and row.j == 3:
+            assert row['sum(f_tensor_value)'] == 15000, 'wrong output %s' %row
+        elif row.i == 2 and row.j == 1:
+            assert row['sum(f_tensor_value)'] == 14000, 'wrong output %s' %row
+        elif row.i == 2 and row.j == 2:
+            assert row['sum(f_tensor_value)'] == 16000, 'wrong output %s' %row
+        elif row.i == 2 and row.j == 3:
+            assert row['sum(f_tensor_value)'] == 18000, 'wrong output %s' %row
+        else:
+            raise Exception('unexpected index values %s' %row)
+
+    print('gtp: computed correct value')
 
     spark.stop()
 
@@ -111,3 +137,14 @@ if __name__ == '__main__':
 # i, j, value
 # 1, 1, 118000
 # 2, 1, 140000
+
+# +---+---+-------------------+
+# |  i|  j|sum(f_tensor_value)|
+# +---+---+-------------------+
+# |  1|  1|            11800.0|
+# |  1|  2|            13400.0|
+# |  1|  3|            15000.0|
+# |  2|  1|            14000.0|
+# |  2|  2|            16000.0|
+# |  2|  3|            18000.0|
+# +---+---+-------------------+
