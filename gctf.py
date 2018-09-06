@@ -25,7 +25,7 @@ def get_observed_tensor_names_of_latent_tensor(gctf_model, ltn):
 def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tensor_xhat_name):
     update_rules.append( {
         'operation_type':'hadamard',
-        'output':'_gtp_d1_Q_v_'+observed_tensor_name,
+        'output':'gtp_d1_Q_v_'+observed_tensor_name,
         'input':{
             'combination_operator':operator.mul,
             'arguments':[
@@ -46,13 +46,13 @@ def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tenso
 def update_d1_delta(gctf_model, update_rules, latent_tensor_names, ltn, observed_tensor_name, other_Z_alpha_tensors):
     update_rules.append( {
         'operation_type':'gtp',
-        'gtp_spec':gen_gtp(gctf_model, '_gtp_d1_delta_'+ltn, ['_gtp_d1_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors)
+        'gtp_spec':gengtp(gctf_model, 'gtp_d1_delta_'+ltn, ['gtp_d1_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors)
     } )
 
 def update_d2_Q_v(update_rules, observed_tensor_name, observed_tensor_xhat_name, factorization):
     update_rules.append( {
         'operation_type':'hadamard',
-        'output':'_gtp_d2_Q_v_'+observed_tensor_name,
+        'output':'gtp_d2_Q_v_'+observed_tensor_name,
         'input':{
             'combination_operator':None,
             'arguments':[
@@ -70,7 +70,7 @@ def update_d2_Q_v(update_rules, observed_tensor_name, observed_tensor_xhat_name,
 def update_d2_delta(gctf_model, update_rules, ltn, observed_tensor_name, other_Z_alpha_tensors):
     update_rules.append( {
         'operation_type':'gtp',
-        'gtp_spec':gen_gtp(gctf_model, '_gtp_d2_delta_'+ltn, ['_gtp_d2_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors)
+        'gtp_spec':gengtp(gctf_model, 'gtp_d2_delta_'+ltn, ['gtp_d2_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors)
     } )
 
 def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
@@ -78,7 +78,7 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
         update_rules.append( {
             #{end+1} = { '=', obj.d2_alpha(alpha), ['obj.config.tfmodel.phi_vector(' num2str(v_index) ')^-1 .* obj.config.tfmodel.d2_delta(' num2str(alpha) ').data'] };
             'operation_type':'hadamard',
-            'output':'_gtp_d2_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
+            'output':'gtp_d2_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
             'input':{
                 'combination_operator':operator.mul, #input must be scalar or same size as output
                 'arguments':[
@@ -90,7 +90,7 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
                         }
                     },
                     {
-                        'data':'_gtp_d2_delta_'+ltn
+                        'data':'gtp_d2_delta_'+ltn
                     }
                 ]
             }
@@ -100,12 +100,12 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
         update_rules.append( {
             #{end+1} = { '=', obj.d2_alpha(alpha), ['obj.config.tfmodel.d2_alpha(' num2str(alpha) ').data + obj.config.tfmodel.phi_vector(' num2str(v_index) ')^-1 .* obj.config.tfmodel.d2_delta(' num2str(alpha) ').data'] };
             'operation_type':'hadamard',
-            'output':'_gtp_d2_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
+            'output':'gtp_d2_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
             'input':{
                 'combination_operator':operator.add,
                 'arguments':[
                     {
-                        'data':'_gtp_d2_alpha_'+ltn
+                        'data':'gtp_d2_alpha_'+ltn
                     },
                     {
                         'suboperation':{ # this input element is calculated using an expression
@@ -119,7 +119,7 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
                                     }
                                 },
                                 {
-                                    'data':'_gtp_d2_delta_'+ltn
+                                    'data':'gtp_d2_delta_'+ltn
                                 }
                             ]
                         }
@@ -133,7 +133,7 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
     if factorization_index == 0:
         update_rules.append( {
             'operation_type':'hadamard',
-            'output':'_gtp_d1_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
+            'output':'gtp_d1_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
             'input':{
                 'combination_operator':operator.mul, #input must be scalar or same size as output
                 'arguments':[
@@ -145,7 +145,7 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
                         }
                     },
                     {
-                        'data':'_gtp_d1_delta_'+ltn
+                        'data':'gtp_d1_delta_'+ltn
                     }
                 ]
             }
@@ -154,12 +154,12 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
     else:
         update_rules.append( {
             'operation_type':'hadamard',
-            'output':'_gtp_d1_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
+            'output':'gtp_d1_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
             'input':{
                 'combination_operator':operator.add,
                 'arguments':[
                     {
-                        'data':'_gtp_d1_alpha_'+ltn
+                        'data':'gtp_d1_alpha_'+ltn
                     },
                     {
                         'suboperation':{ # this input element is calculated using an expression
@@ -174,7 +174,7 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
                                     }
                                 },
                                 {
-                                    'data':'_gtp_d1_delta_'+ltn
+                                    'data':'gtp_d1_delta_'+ltn
                                 }
                             ]
                         }
@@ -187,7 +187,7 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
 def update_xhat(gctf_model, update_rules, observed_tensor_xhat_name, factorization):
     update_rules.append( {
         'operation_type':'gtp',
-        'gtp_spec' : gen_gtp(gctf_model, observed_tensor_xhat_name, factorization['latent_tensors'])
+        'gtp_spec' : gengtp(gctf_model, observed_tensor_xhat_name, factorization['latent_tensors'])
     } )
 
 
@@ -212,8 +212,8 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
     otn_with_ltn=get_observed_tensor_names_of_latent_tensor(gctf_model, ltn)
     if len(otn_with_ltn) == 1:
         rule['input'][1]['suboperation']['arguments'] = [
-            {'data':'_gtp_d1_alpha_'+ltn+'_v_'+otn_with_ltn[0]},
-            {'data':'_gtp_d2_alpha_'+ltn+'_v_'+otn_with_ltn[0]}
+            {'data':'gtp_d1_alpha_'+ltn+'_v_'+otn_with_ltn[0]},
+            {'data':'gtp_d2_alpha_'+ltn+'_v_'+otn_with_ltn[0]}
         ]
     else:
         rule['input'][1]['suboperation']['arguments'] = [
@@ -232,17 +232,17 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
         ]
         for otn in otn_with_ltn:
             rule['input'][1]['suboperation']['arguments'][0]['suboperation']['arguments'].append(
-                {'data':'_gtp_d1_alpha_'+ltn+'_v_'+otn},
+                {'data':'gtp_d1_alpha_'+ltn+'_v_'+otn},
             )
 
             rule['input'][1]['suboperation']['arguments'][1]['suboperation']['arguments'].append(
-                {'data':'_gtp_d2_alpha_'+ltn+'_v_'+otn},
+                {'data':'gtp_d2_alpha_'+ltn+'_v_'+otn},
             )
 
         update_rules.append(rule)
 
 
-def gen_gtp(gctf_model, output_tensor_name, input_tensor_names):
+def gengtp(gctf_model, output_tensor_name, input_tensor_names):
     gtp_spec = {
         'config' : {
             'cardinalities' : gctf_model['config']['cardinalities'],
@@ -265,22 +265,22 @@ def gen_update_rules(gctf_model):
     latent_tensor_names = set()
     for factorization in gctf_model['config']['factorizations']:
         observed_tensor_name = factorization['observed_tensor']
-        generate_tensor(gctf_model, '_gtp_hat_'+observed_tensor_name, gctf_model['tensors'][observed_tensor_name]['indices'])
+        generate_tensor(gctf_model, 'gtp_hat_'+observed_tensor_name, gctf_model['tensors'][observed_tensor_name]['indices'])
 
-        generate_tensor(gctf_model, '_gtp_d1_Q_v_'+observed_tensor_name, gctf_model['tensors'][observed_tensor_name]['indices'])
-        generate_tensor(gctf_model, '_gtp_d2_Q_v_'+observed_tensor_name, gctf_model['tensors'][observed_tensor_name]['indices'])
+        generate_tensor(gctf_model, 'gtp_d1_Q_v_'+observed_tensor_name, gctf_model['tensors'][observed_tensor_name]['indices'])
+        generate_tensor(gctf_model, 'gtp_d2_Q_v_'+observed_tensor_name, gctf_model['tensors'][observed_tensor_name]['indices'])
 
         for ltn in factorization['latent_tensors']:
             latent_tensor_names.add( ltn )
 
-            generate_tensor(gctf_model, '_gtp_d1_alpha_'+ltn+'_v_'+observed_tensor_name, gctf_model['tensors'][ltn]['indices'])
-            generate_tensor(gctf_model, '_gtp_d2_alpha_'+ltn+'_v_'+observed_tensor_name, gctf_model['tensors'][ltn]['indices'])
+            generate_tensor(gctf_model, 'gtp_d1_alpha_'+ltn+'_v_'+observed_tensor_name, gctf_model['tensors'][ltn]['indices'])
+            generate_tensor(gctf_model, 'gtp_d2_alpha_'+ltn+'_v_'+observed_tensor_name, gctf_model['tensors'][ltn]['indices'])
 
 
     latent_tensor_names = list(latent_tensor_names)
     for ltn in latent_tensor_names:
-        generate_tensor(gctf_model, '_gtp_d1_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
-        generate_tensor(gctf_model, '_gtp_d2_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
+        generate_tensor(gctf_model, 'gtp_d1_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
+        generate_tensor(gctf_model, 'gtp_d2_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
 
     # get all indices
     all_indices = set()
@@ -290,7 +290,7 @@ def gen_update_rules(gctf_model):
     all_indices = list(all_indices)
 
     # add full tensor to the tensor list
-    gctf_model['tensors']['_gtp_full_tensor'] = {'indices':all_indices, 'tags':['do_not_initialize_from_disk',]}
+    gctf_model['tensors']['gtp_full_tensor'] = {'indices':all_indices, 'tags':['do_not_initialize_from_disk',]}
 
     # indices are assumed to be serialized left to right
     for tensor_name, tensor in gctf_model['tensors'].iteritems():
@@ -309,7 +309,7 @@ def gen_update_rules(gctf_model):
         # update each X_hat
         for factorization_index, factorization in enumerate(gctf_model['config']['factorizations']):
             observed_tensor_name = factorization['observed_tensor']
-            observed_tensor_xhat_name = '_gtp_hat_'+observed_tensor_name
+            observed_tensor_xhat_name = 'gtp_hat_'+observed_tensor_name
 
             update_xhat(gctf_model, update_rules, observed_tensor_xhat_name, factorization)
             

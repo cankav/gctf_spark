@@ -1,37 +1,9 @@
-from pyspark import SparkContext, SparkConf
-from pyspark.sql import SparkSession
-from operator import add
 from utils import read_tensor_data_from_hdfs
-from utils import linear_index_to_DOK_index
 from utils import gctf_data_path
-import os
 from utils import ComplexEncoder
 import json
-from utils import get_all_indices
-#from utils import generate_local_tensor_data
 from utils import generate_hdfs_tensor_data
 import operator
-
-    # # map function to calculate each entry of the full tensor and compute one or more results output tensor indices
-    # def compute_full_tensor(tensor_dataframe_row):
-    #     if tensor_dataframe_row['tensor_name'] == full_tensor_name:
-    #         # find input elements for this row of full tensor entry
-    #         new_f_tensor_value = 1
-    #         for tensor_name in gtp_spec['config']['input']:
-    #             input_value = 1 # tensor_dataframe.filter(tensor_name=tensor_name)
-    #             for index_name in gtp_spec['config']['cardinalities']:
-    #                 input_value = 3 # input_value.filter(index_name==tensor_dataframe_row[index_name] | index_name)
-    #             #assert len(input_value) == 1, 'each f tensor entry must correspond to a distinct row for each input tensor'
-    #             new_f_tensor_value *= input_value #[0]['value']
-    #         print('old value %s new value %s' %(tensor_dataframe_row.value, new_f_tensor_value))
-    #         tensor_dataframe_row.value = new_f_tensor_value
-            
-    #         return tensor_dataframe_row
-    #     else:
-    #         return tensor_dataframe_row
-
-    # tensor_dataframe = tensor_dataframe.rdd.map(compute_full_tensor) #.map(compute_output_tensor)
-
 
 def gtp(spark, gtp_spec, gctf_model=None):
     print('EXECUTING RULE: starting GTP operation gtp_spec %s' %json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ))
@@ -63,6 +35,8 @@ def gtp(spark, gtp_spec, gctf_model=None):
 
 
 if __name__ == '__main__':
+    from pyspark.sql import SparkSession
+
     gtp_spec = {
         'config': {
             'cardinalities' : {
@@ -127,7 +101,7 @@ if __name__ == '__main__':
         else:
             raise Exception('unexpected index values %s' %row)
 
-    print('gtp: computed correct value')
+    print('gtp: computed correct output')
 
     spark.stop()
 
