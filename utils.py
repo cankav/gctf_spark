@@ -162,3 +162,12 @@ class ComplexEncoder(json.JSONEncoder):
             return str(obj)
 
         return json.JSONEncoder.default(self, obj)
+
+# from https://stackoverflow.com/q/354038/1056345
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+#################################################

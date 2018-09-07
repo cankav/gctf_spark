@@ -1,10 +1,8 @@
 #from gtp import gtp
 import operator
 import copy
-from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from gtp import gtp
-from utils import linear_index_to_tensor_index
 from utils import read_tensor_data_from_hdfs
 from utils import gctf_data_path
 from hadamard import hadamard
