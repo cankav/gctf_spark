@@ -87,19 +87,19 @@ if __name__ == '__main__':
 
     for row in gtp_spec['tensors'][output_tensor_name]['df'].collect():
         if row.i == 1 and row.j == 1:
-            assert row['sum(f_tensor_value)'] == 11800, 'wrong output %s' %row
+            assert row['sum(f_tensor_value)'] == 11800, 'wrong output %s' %str(row)
         elif row.i == 1 and row.j == 2:
-            assert row['sum(f_tensor_value)'] == 13400, 'wrong output %s' %row
+            assert row['sum(f_tensor_value)'] == 13400, 'wrong output %s' %str(row)
         elif row.i == 1 and row.j == 3:
-            assert row['sum(f_tensor_value)'] == 15000, 'wrong output %s' %row
+            assert row['sum(f_tensor_value)'] == 15000, 'wrong output %s' %str(row)
         elif row.i == 2 and row.j == 1:
-            assert row['sum(f_tensor_value)'] == 14000, 'wrong output %s' %row
+            assert row['sum(f_tensor_value)'] == 14000, 'wrong output %s' %str(row)
         elif row.i == 2 and row.j == 2:
-            assert row['sum(f_tensor_value)'] == 16000, 'wrong output %s' %row
+            assert row['sum(f_tensor_value)'] == 16000, 'wrong output %s' %str(row)
         elif row.i == 2 and row.j == 3:
-            assert row['sum(f_tensor_value)'] == 18000, 'wrong output %s' %row
+            assert row['sum(f_tensor_value)'] == 18000, 'wrong output %s' %str(row)
         else:
-            raise Exception('unexpected index values %s' %row)
+            raise Exception('unexpected index values %s' %str(row))
 
     print('gtp: computed correct output')
 

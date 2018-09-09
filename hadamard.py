@@ -50,7 +50,7 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
     all_arguments = []
     for argument in input_spec['arguments']:
         if 'suboperation' in argument:
-            all_arguments.append( process_operation( process_operation(spark, all_tensors_config, argument, level+1) ) )
+            all_arguments.append( (process_operation(spark, all_tensors_config, argument['suboperation'], level+1),) )
         else:
             # fetch data element
             data_element = argument['data'] # can be a string representing a dataframe, can be a scalar numeric value
@@ -98,7 +98,9 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
                 output_de = pre_processed_de.withColumn('final_output', input_spec['combination_operator'](output_de, pre_processed_de.output))
 
             elif isinstance(output_de, DataFrame) and not isinstance(pre_processed_de, DataFrame):
-                output_de = output_de.withColumn('final_output', input_spec['combination_operator'](output_de.value, pre_processed_de))
+                print('was %s' %output_de)
+                print('was %s' %pre_processed_de)
+                output_de = output_de.withColumn('final_output', input_spec['combination_operator'](output_de.output, pre_processed_de))
 
             else: # both numeric
                 output_de = input_spec['combination_operator'](output_de, pre_processed_de)
@@ -187,8 +189,8 @@ if __name__ == '__main__':
             tensors[tensor_name]['df'] =  read_tensor_data_from_hdfs(spark, tensors, tensor_name, gctf_data_path)
 
 
-    # TEST CASE: hadamard( DataFrame, DataFrame )
-    hadamard(spark, tensors, {
+    # TEST CASE 1: hadamard( DataFrame, DataFrame )
+    result = hadamard(spark, tensors, {
         'operation_type':'hadamard',
         'input':{
             'combination_operator':operator.mul, #input must be scalar or same size as output
@@ -201,5 +203,324 @@ if __name__ == '__main__':
                 }
             ]
         }
-    }).show(n=1000)
+    })
+
+    for row in result.collect():
+        if row.i == 1 and row.k == 1:
+            assert row['output'] == 100, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 2:
+            assert row['output'] == 900, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 3:
+            assert row['output'] == 2500, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 4:
+            assert row['output'] == 4900, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 1:
+            assert row['output'] == 400, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 2:
+            assert row['output'] == 1600, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 3:
+            assert row['output'] == 3600, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 4:
+            assert row['output'] == 6400, 'wrong output %s' %str(row)
+        else:
+            raise Exception('unexpected index values %s' %str(row))
+
+    print('test case 1 done')
+
+    # TEST CASE 2: hadamard( DataFrame, scalar number )
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul,
+            'arguments': [
+                {
+                    'data':'gtp_test_input1'
+                },
+                {
+                    'data':2
+                }
+            ]
+        }
+    })
+
+    for row in result.collect():
+        if row.i == 1 and row.k == 1: # 10
+            assert row['output'] == 20, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 2: # 30
+            assert row['output'] == 60, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 3: # 50
+            assert row['output'] == 100, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 4: # 70
+            assert row['output'] == 140, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 1: # 20
+            assert row['output'] == 40, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 2: # 40
+            assert row['output'] == 80, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 3: # 60
+            assert row['output'] == 120, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 4: # 80
+            assert row['output'] == 160, 'wrong output %s' %str(row)
+        else:
+            raise Exception('unexpected index values %s' %str(row))
+
+    print('test case 2 done')
+
+    # TEST CASE 3: hadamard( scalar number, DataFrame )
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul,
+            'arguments': [
+                {
+                    'data':3
+                },
+                {
+                    'data':'gtp_test_input1'
+                }
+            ]
+        }
+    })
+
+    for row in result.collect():
+        if row.i == 1 and row.k == 1: # 10
+            assert row['output'] == 30, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 2: # 30
+            assert row['output'] == 90, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 3: # 50
+            assert row['output'] == 150, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 4: # 70
+            assert row['output'] == 210, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 1: # 20
+            assert row['output'] == 60, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 2: # 40
+            assert row['output'] == 120, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 3: # 60
+            assert row['output'] == 180, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 4: # 80
+            assert row['output'] == 240, 'wrong output %s' %str(row)
+        else:
+            raise Exception('unexpected index values %s' %str(row))
+
+    print('test case 3 done')
+
+    # TEST CASE 4: hadamard( scalar number, number )
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul,
+            'arguments': [
+                {
+                    'data':3
+                },
+                {
+                    'data':4
+                }
+            ]
+        }
+    })
+
+    assert result==12, 'wrong output %s' %str(result)
+    print('test case 4 done')
+
+
+
+
+
+    # TEST CASE 5: hadamard( DataFrame (pre_processor), DataFrame )
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul, #input must be scalar or same size as output
+            'arguments': [
+                {
+                    'data':'gtp_test_input1',
+                    'pre_processor':{
+                        'operator':'pow',
+                        'argument':-1
+                    }
+                },
+                {
+                    'data':'gtp_test_input1'
+                }
+            ]
+        }
+    })
+
+    for row in result.collect():
+        assert row['output'] == 1, 'wrong output %s' %str(row)
+
+    print('test case 5 done')
+
+    # TEST CASE 6: hadamard( DataFrame, DataFrame (pre_processor))
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul, #input must be scalar or same size as output
+            'arguments': [
+                {
+                    'data':'gtp_test_input1'
+                },
+                {
+                    'data':'gtp_test_input1',
+                    'pre_processor':{
+                        'operator':'pow',
+                        'argument':-1
+                    }
+                }
+            ]
+        }
+    })
+
+    for row in result.collect():
+        assert row['output'] == 1, 'wrong output %s' %str(row)
+
+    print('test case 6 done')
+
+    # TEST CASE 7: hadamard( DataFrame(pre_processor), DataFrame(pre_processor) )
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul,
+            'arguments': [
+                {
+                    'data':'gtp_test_input1',
+                    'pre_processor':{
+                        'operator':'pow',
+                        'argument':-1
+                    }
+                },
+                {
+                    'data':'gtp_test_input1',
+                    'pre_processor':{
+                        'operator':'pow',
+                        'argument':-1
+                    }
+                }
+            ]
+        }
+    })
+
+    for row in result.collect():
+        if row.i == 1 and row.k == 1: # 10
+            assert abs(row['output'] - 1.0/100) < 0.0001, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 2: # 30
+            assert abs(row['output'] - 1.0/900) < 0.0001, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 3: # 50
+            assert abs(row['output'] - 1.0/2500) < 0.0001, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 4: # 70
+            assert abs(row['output'] - 1.0/4900) < 0.0001, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 1: # 20
+            assert abs(row['output'] - 1.0/400) < 0.0001, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 2: # 40
+            assert abs(row['output'] - 1.0/1600) < 0.0001, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 3: # 60
+            assert abs(row['output'] - 1.0/3600) < 0.0001, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 4: # 80
+            assert abs(row['output'] - 1.0/6400) < 0.0001, 'wrong output %s' %str(row)
+        else:
+            raise Exception('unexpected index values %s' %str(row))
+
+    print('test case 7 done')
+
+    # TEST CASE 8: hadamard( DataFrame, scalar number (pre_processor) )
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul,
+            'arguments': [
+                {
+                    'data':'gtp_test_input1'
+                },
+                {
+                    'data':2,
+                    'pre_processor':{
+                        'operator':'pow',
+                        'argument':2
+                    }
+                }
+            ]
+        }
+    })
+
+    for row in result.collect():
+        if row.i == 1 and row.k == 1: # 10
+            assert row['output'] == 40, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 2: # 30
+            assert row['output'] == 120, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 3: # 50
+            assert row['output'] == 200, 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 4: # 70
+            assert row['output'] == 280, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 1: # 20
+            assert row['output'] == 80, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 2: # 40
+            assert row['output'] == 160, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 3: # 60
+            assert row['output'] == 240, 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 4: # 80
+            assert row['output'] == 320, 'wrong output %s' %str(row)
+        else:
+            raise Exception('unexpected index values %s' %str(row))
+
+    print('test case 8 done')
+
+
+
+
+
+
+    # TEST CASE 9: hadamard( DataFrame, suboperation(scalar number, DataFrame) )
+    result = hadamard(spark, tensors, {
+        'operation_type':'hadamard',
+        'input':{
+            'combination_operator':operator.mul, #input must be scalar or same size as output
+            'arguments': [
+                {
+                    'data':'gtp_test_input1'
+                },
+                {
+                    'suboperation':{
+                        'combination_operator':operator.mul,
+                        'arguments':[
+                            {
+                                'data':3,
+                                'pre_processor':{
+                                    'operator':'pow',
+                                    'argument':-1
+                                }
+                            },
+                            {
+                                'data':'gtp_test_input1'
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    })
+
+    def hef(v):
+        return v*(1.0/3*v)
+
+    for row in result.collect():
+        if row.i == 1 and row.k == 1: # 10
+            assert row['output'] == hef(10), 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 2: # 30
+            assert row['output'] == hef(30), 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 3: # 50
+            assert row['output'] == hef(50), 'wrong output %s' %str(row)
+        elif row.i == 1 and row.k == 4: # 70
+            assert row['output'] == hef(70), 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 1: # 20
+            assert row['output'] == hef(20), 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 2: # 40
+            assert row['output'] == hef(40), 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 3: # 60
+            assert row['output'] == hef(60), 'wrong output %s' %str(row)
+        elif row.i == 2 and row.k == 4: # 80
+            assert row['output'] == hef(80), 'wrong output %s' %str(row)
+        else:
+            raise Exception('unexpected index values %s' %str(row))
+
+    print('test case 9 done')
 
