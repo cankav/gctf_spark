@@ -15,3 +15,5 @@ fi
 
 export HADOOP_USER_NAME=sprk;
 /home/sprk/spark-2.3.0-bin-hadoop2.7/bin/spark-submit --master spark://spark-master0-dsl05:7077 --conf "spark.executor.memory=5500m" --total-executor-cores 1 --py-files utils.py,gtp.py,hadamard.py $MAIN_PY
+
+# TODO: add test all command here

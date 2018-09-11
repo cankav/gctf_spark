@@ -4,15 +4,14 @@ from utils import ComplexEncoder
 import json
 from utils import generate_hdfs_tensor_data
 import operator
+from utils import create_full_tensor
+from utils import full_tensor_name
 
 def gtp(spark, gtp_spec, gctf_model=None):
     print('EXECUTING RULE: starting GTP operation gtp_spec %s' %json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ))
 
-    full_tensor_name='gtp_full_tensor'
     if full_tensor_name not in gtp_spec['tensors']:
-        print('gtp: creating full tensor')
-        cards=gtp_spec['config']['cardinalities']
-        generate_hdfs_tensor_data(gtp_spec['tensors'], cards, full_tensor_name, cards.keys())
+        create_full_tensor(spark, gtp_spec['tensors'], gtp_spec['config']['cardinalities'])
         gtp_spec['tensors'][full_tensor_name]['df'] = read_tensor_data_from_hdfs(spark, gtp_spec['tensors'], full_tensor_name, gctf_data_path)
     else:
         # clear full tensor elements not necessary because all entries will be re-calculated
@@ -20,6 +19,7 @@ def gtp(spark, gtp_spec, gctf_model=None):
         pass
 
     # Calculate F tensor
+    assert 'df' in gtp_spec['tensors'][full_tensor_name], 'can not work with an uninitialized tensor. tensor spec: %s' %json.dumps( gtp_spec['tensors'][full_tensor_name], indent=4, sort_keys=True, cls=ComplexEncoder )
     F_df = gtp_spec['tensors'][full_tensor_name]['df']
     multiply_column_list = []
     for input_tensor_name in gtp_spec['config']['input']:
@@ -29,14 +29,14 @@ def gtp(spark, gtp_spec, gctf_model=None):
     
     # Calculate output tensor
     output_tensor_name = gtp_spec['config']['output']
-    output_df = F_df.groupBy(gtp_spec['tensors'][output_tensor_name]['indices']).sum('f_tensor_value')
+    output_df = F_df.groupBy(gtp_spec['tensors'][output_tensor_name]['indices']).sum('f_tensor_value').withColumnRenamed('sum(f_tensor_value)', 'value')
 
     gtp_spec['tensors'][output_tensor_name]['df'] = output_df
 
 
 if __name__ == '__main__':
     from pyspark.sql import SparkSession
-
+    import os
     gtp_spec = {
         'config': {
             'cardinalities' : {
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     print( cmd )
     os.system( cmd )
 
-    # load hdfs data into spark
+    # load hdfs data into spark memory
     for tensor_name in gtp_spec['config']['input']:
         if 'local_filename' in gtp_spec['tensors'][tensor_name]:
             gtp_spec['tensors'][tensor_name]['hdfs_filename'] = '/'.join([gctf_data_path, gtp_spec['tensors'][tensor_name]['local_filename'].split('/')[-1]])
@@ -87,17 +87,17 @@ if __name__ == '__main__':
 
     for row in gtp_spec['tensors'][output_tensor_name]['df'].collect():
         if row.i == 1 and row.j == 1:
-            assert row['sum(f_tensor_value)'] == 11800, 'wrong output %s' %str(row)
+            assert row['value'] == 11800, 'wrong output %s' %str(row)
         elif row.i == 1 and row.j == 2:
-            assert row['sum(f_tensor_value)'] == 13400, 'wrong output %s' %str(row)
+            assert row['value'] == 13400, 'wrong output %s' %str(row)
         elif row.i == 1 and row.j == 3:
-            assert row['sum(f_tensor_value)'] == 15000, 'wrong output %s' %str(row)
+            assert row['value'] == 15000, 'wrong output %s' %str(row)
         elif row.i == 2 and row.j == 1:
-            assert row['sum(f_tensor_value)'] == 14000, 'wrong output %s' %str(row)
+            assert row['value'] == 14000, 'wrong output %s' %str(row)
         elif row.i == 2 and row.j == 2:
-            assert row['sum(f_tensor_value)'] == 16000, 'wrong output %s' %str(row)
+            assert row['value'] == 16000, 'wrong output %s' %str(row)
         elif row.i == 2 and row.j == 3:
-            assert row['sum(f_tensor_value)'] == 18000, 'wrong output %s' %str(row)
+            assert row['value'] == 18000, 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
@@ -113,7 +113,7 @@ if __name__ == '__main__':
 # 2, 1, 140000
 
 # +---+---+-------------------+
-# |  i|  j|sum(f_tensor_value)|
+# |  i|  j|value|
 # +---+---+-------------------+
 # |  1|  1|            11800.0|
 # |  1|  2|            13400.0|

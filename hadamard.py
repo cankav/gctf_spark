@@ -31,7 +31,7 @@ def apply_pre_processor(de_prep):
         # yes pre_processor
         pre_processor_spec = de_prep[1]
         if isinstance(data_element, DataFrame):
-            output_element = data_element.withColumn('output', apply_pre_processor_helper(data_element.value, pre_processor_spec))
+            output_element = data_element.withColumn('output', apply_pre_processor_helper(data_element['value'], pre_processor_spec))
         elif is_number(data_element):
             output_element = apply_pre_processor_helper(data_element, pre_processor_spec)
         else:
@@ -55,6 +55,8 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
             # fetch data element
             data_element = argument['data'] # can be a string representing a dataframe, can be a scalar numeric value
             if isinstance(data_element, basestring):
+                tensor_name = data_element
+                assert tensor_name in all_tensors_config, 'tensor_name %s must be located in all_tensors_config %s to treat it as a tensor' %(tensor_name, json.dumps( all_tensors_config, indent=4, sort_keys=True, cls=ComplexEncoder ))
                 data_element = all_tensors_config[tensor_name]['df']
 
                 # sanity check
@@ -68,6 +70,7 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
             else:
                 raise Exception('unknown data element (1)')
 
+            # add data_element to all_arguments
             if 'pre_processor' in argument:
                 all_arguments.append( (data_element, argument['pre_processor'] ) )
 
@@ -106,7 +109,7 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
                 output_de = input_spec['combination_operator'](output_de, pre_processed_de)
 
     if isinstance(output_de, DataFrame):
-        output_de = output_de.drop('output').withColumnRenamed('final_output', 'output')
+        output_de = output_de.drop('output', 'value').withColumnRenamed('final_output', 'value')
 
     return output_de
 
@@ -207,21 +210,21 @@ if __name__ == '__main__':
 
     for row in result.collect():
         if row.i == 1 and row.k == 1:
-            assert row['output'] == 100, 'wrong output %s' %str(row)
+            assert row['value'] == 100, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2:
-            assert row['output'] == 900, 'wrong output %s' %str(row)
+            assert row['value'] == 900, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 3:
-            assert row['output'] == 2500, 'wrong output %s' %str(row)
+            assert row['value'] == 2500, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 4:
-            assert row['output'] == 4900, 'wrong output %s' %str(row)
+            assert row['value'] == 4900, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 1:
-            assert row['output'] == 400, 'wrong output %s' %str(row)
+            assert row['value'] == 400, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 2:
-            assert row['output'] == 1600, 'wrong output %s' %str(row)
+            assert row['value'] == 1600, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 3:
-            assert row['output'] == 3600, 'wrong output %s' %str(row)
+            assert row['value'] == 3600, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 4:
-            assert row['output'] == 6400, 'wrong output %s' %str(row)
+            assert row['value'] == 6400, 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
@@ -245,21 +248,21 @@ if __name__ == '__main__':
 
     for row in result.collect():
         if row.i == 1 and row.k == 1: # 10
-            assert row['output'] == 20, 'wrong output %s' %str(row)
+            assert row['value'] == 20, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
-            assert row['output'] == 60, 'wrong output %s' %str(row)
+            assert row['value'] == 60, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 3: # 50
-            assert row['output'] == 100, 'wrong output %s' %str(row)
+            assert row['value'] == 100, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 4: # 70
-            assert row['output'] == 140, 'wrong output %s' %str(row)
+            assert row['value'] == 140, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 1: # 20
-            assert row['output'] == 40, 'wrong output %s' %str(row)
+            assert row['value'] == 40, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 2: # 40
-            assert row['output'] == 80, 'wrong output %s' %str(row)
+            assert row['value'] == 80, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 3: # 60
-            assert row['output'] == 120, 'wrong output %s' %str(row)
+            assert row['value'] == 120, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 4: # 80
-            assert row['output'] == 160, 'wrong output %s' %str(row)
+            assert row['value'] == 160, 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
@@ -283,21 +286,21 @@ if __name__ == '__main__':
 
     for row in result.collect():
         if row.i == 1 and row.k == 1: # 10
-            assert row['output'] == 30, 'wrong output %s' %str(row)
+            assert row['value'] == 30, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
-            assert row['output'] == 90, 'wrong output %s' %str(row)
+            assert row['value'] == 90, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 3: # 50
-            assert row['output'] == 150, 'wrong output %s' %str(row)
+            assert row['value'] == 150, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 4: # 70
-            assert row['output'] == 210, 'wrong output %s' %str(row)
+            assert row['value'] == 210, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 1: # 20
-            assert row['output'] == 60, 'wrong output %s' %str(row)
+            assert row['value'] == 60, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 2: # 40
-            assert row['output'] == 120, 'wrong output %s' %str(row)
+            assert row['value'] == 120, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 3: # 60
-            assert row['output'] == 180, 'wrong output %s' %str(row)
+            assert row['value'] == 180, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 4: # 80
-            assert row['output'] == 240, 'wrong output %s' %str(row)
+            assert row['value'] == 240, 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
@@ -347,7 +350,7 @@ if __name__ == '__main__':
     })
 
     for row in result.collect():
-        assert row['output'] == 1, 'wrong output %s' %str(row)
+        assert row['value'] == 1, 'wrong output %s' %str(row)
 
     print('test case 5 done')
 
@@ -372,7 +375,7 @@ if __name__ == '__main__':
     })
 
     for row in result.collect():
-        assert row['output'] == 1, 'wrong output %s' %str(row)
+        assert row['value'] == 1, 'wrong output %s' %str(row)
 
     print('test case 6 done')
 
@@ -402,21 +405,21 @@ if __name__ == '__main__':
 
     for row in result.collect():
         if row.i == 1 and row.k == 1: # 10
-            assert abs(row['output'] - 1.0/100) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/100) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
-            assert abs(row['output'] - 1.0/900) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/900) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 3: # 50
-            assert abs(row['output'] - 1.0/2500) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/2500) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 4: # 70
-            assert abs(row['output'] - 1.0/4900) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/4900) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 1: # 20
-            assert abs(row['output'] - 1.0/400) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/400) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 2: # 40
-            assert abs(row['output'] - 1.0/1600) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/1600) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 3: # 60
-            assert abs(row['output'] - 1.0/3600) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/3600) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 4: # 80
-            assert abs(row['output'] - 1.0/6400) < 0.0001, 'wrong output %s' %str(row)
+            assert abs(row['value'] - 1.0/6400) < 0.0001, 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
@@ -444,21 +447,21 @@ if __name__ == '__main__':
 
     for row in result.collect():
         if row.i == 1 and row.k == 1: # 10
-            assert row['output'] == 40, 'wrong output %s' %str(row)
+            assert row['value'] == 40, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
-            assert row['output'] == 120, 'wrong output %s' %str(row)
+            assert row['value'] == 120, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 3: # 50
-            assert row['output'] == 200, 'wrong output %s' %str(row)
+            assert row['value'] == 200, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 4: # 70
-            assert row['output'] == 280, 'wrong output %s' %str(row)
+            assert row['value'] == 280, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 1: # 20
-            assert row['output'] == 80, 'wrong output %s' %str(row)
+            assert row['value'] == 80, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 2: # 40
-            assert row['output'] == 160, 'wrong output %s' %str(row)
+            assert row['value'] == 160, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 3: # 60
-            assert row['output'] == 240, 'wrong output %s' %str(row)
+            assert row['value'] == 240, 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 4: # 80
-            assert row['output'] == 320, 'wrong output %s' %str(row)
+            assert row['value'] == 320, 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
@@ -504,23 +507,24 @@ if __name__ == '__main__':
 
     for row in result.collect():
         if row.i == 1 and row.k == 1: # 10
-            assert row['output'] == hef(10), 'wrong output %s' %str(row)
+            assert row['value'] == hef(10), 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
-            assert row['output'] == hef(30), 'wrong output %s' %str(row)
+            assert row['value'] == hef(30), 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 3: # 50
-            assert row['output'] == hef(50), 'wrong output %s' %str(row)
+            assert row['value'] == hef(50), 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 4: # 70
-            assert row['output'] == hef(70), 'wrong output %s' %str(row)
+            assert row['value'] == hef(70), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 1: # 20
-            assert row['output'] == hef(20), 'wrong output %s' %str(row)
+            assert row['value'] == hef(20), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 2: # 40
-            assert row['output'] == hef(40), 'wrong output %s' %str(row)
+            assert row['value'] == hef(40), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 3: # 60
-            assert row['output'] == hef(60), 'wrong output %s' %str(row)
+            assert row['value'] == hef(60), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 4: # 80
-            assert row['output'] == hef(80), 'wrong output %s' %str(row)
+            assert row['value'] == hef(80), 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
     print('test case 9 done')
 
+    print('all tests completed')

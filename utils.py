@@ -8,7 +8,8 @@ from pyspark.sql import DataFrame
 
 gctf_data_path='hdfs://spark-master0-dsl05:9000/gctf_data' #'/home/sprk/shared/gctf_data'
 gctf_data_path_no_url='/gctf_data'
-
+full_tensor_name='gtp_full_tensor'
+    
 def iter_indices_gen_data(all_tensors_config, cardinalities, tensor_name, fd, zero_based_indices, iter_index_values=[]):
     tensor_index_names = all_tensors_config[tensor_name]['indices']
     if len(iter_index_values) == len(tensor_index_names):
@@ -58,7 +59,6 @@ hdfs_user='sprk'):
     client = InsecureClient(hdfs_url, user=hdfs_user)
     assert client.status(hdfs_filename, strict=False) is None, 'data file %s exists can not procede' %hdfs_filename
 
-    print ('wft %s' %hdfs_filename)
     with client.write(hdfs_filename, encoding='utf-8') as writer:
         write_header(all_tensors_config, tensor_name, writer)
         iter_indices_gen_data(all_tensors_config, cardinalities, tensor_name, writer, zero_based_indices)
@@ -73,12 +73,12 @@ def add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices, cardinal
     }
 
 def generate_local_tensor_data(all_tensors_config, cardinalities, tensor_name, indices):
-    assert tensor_name not in all_tensors_config, 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
+    assert tensor_name not in all_tensors_config, 'tensor_name %s already exists in all_tensors_config %s' %(tensor_name, all_tensors_config)
     add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices, cardinalities)
     generate_random_tensor_data_local(all_tensors_config, cardinalities, tensor_name)
 
 def generate_hdfs_tensor_data(all_tensors_config, cardinalities, tensor_name, indices):
-    assert tensor_name not in all_tensors_config, 'tensor_name %s already exists in gctf_model %s' %(tensor_name, gctf_model)
+    assert tensor_name not in all_tensors_config, 'tensor_name %s already exists in all_tensors_config %s' %(tensor_name, all_tensors_config)
     add_tensor_to_all_tensors(all_tensors_config, tensor_name, indices, cardinalities)
     generate_random_tensor_data_hdfs(all_tensors_config, cardinalities, tensor_name)
 
@@ -171,3 +171,43 @@ def is_number(s):
     except ValueError:
         return False
 #################################################
+
+def get_observed_tensor_names_of_latent_tensor(gctf_model, ltn):
+    otn_with_ltn=[]
+    for factorization in gctf_model['config']['factorizations']:
+        if ltn in factorization['latent_tensors']:
+            otn_with_ltn.append(factorization['observed_tensor'])
+
+    assert len(otn_with_ltn), ('ltn %s was not found in any of the factorizations' %ltn)
+    return otn_with_ltn
+
+
+def gengtp(gctf_model, output_tensor_name, input_tensor_names, full_tensor_name_str=None):
+    gtp_spec = {
+        'config' : {
+            'cardinalities' : gctf_model['config']['cardinalities'],
+            'output' : output_tensor_name,
+            'input' : input_tensor_names
+        },
+        'tensors' : {
+            output_tensor_name : gctf_model['tensors'][output_tensor_name]
+        }
+    }
+
+    if full_tensor_name_str:
+        gtp_spec['tensors']['gtp_full_tensor'] = gctf_model['tensors'][full_tensor_name_str]
+
+    for itn in input_tensor_names:
+        gtp_spec['tensors'][itn] = gctf_model['tensors'][itn]
+
+    return gtp_spec
+
+def create_full_tensor(spark_session, all_tensors_config, all_cardinalities):
+    print('gtp: creating full tensor with indices %s' %all_cardinalities)
+    generate_hdfs_tensor_data(all_tensors_config, all_cardinalities, full_tensor_name, all_cardinalities.keys())
+    all_tensors_config[full_tensor_name]['df'] = read_tensor_data_from_hdfs(spark_session, all_tensors_config, full_tensor_name, gctf_data_path)
+
+def generate_spark_tensor(spark_session, all_tensors_config, all_cardinalities, new_tensor_name, new_tensor_indices):
+    generate_hdfs_tensor_data(all_tensors_config, all_cardinalities, new_tensor_name, new_tensor_indices)
+    all_tensors_config[new_tensor_name]['df'] = read_tensor_data_from_hdfs(spark_session, all_tensors_config, new_tensor_name, gctf_data_path)
+
