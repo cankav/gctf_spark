@@ -16,6 +16,7 @@ from utils import create_full_tensor
 from utils import full_tensor_name
 from utils import generate_hdfs_tensor_data
 from utils import generate_spark_tensor
+from pyspark.sql import DataFrame
 
 def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tensor_xhat_name):
     update_rules.append( {
@@ -38,11 +39,13 @@ def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tenso
         }
     } )
 
+
 def update_d1_delta(gctf_model, update_rules, latent_tensor_names, ltn, observed_tensor_name, other_Z_alpha_tensors):
     update_rules.append( {
         'operation_type':'gtp',
         'gtp_spec':gengtp(gctf_model, 'gtp_d1_delta_'+ltn, ['gtp_d1_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors, full_tensor_name)
     } )
+
 
 def update_d2_Q_v(update_rules, observed_tensor_name, observed_tensor_xhat_name, factorization):
     update_rules.append( {
@@ -62,11 +65,13 @@ def update_d2_Q_v(update_rules, observed_tensor_name, observed_tensor_xhat_name,
         }
     } )
 
+
 def update_d2_delta(gctf_model, update_rules, ltn, observed_tensor_name, other_Z_alpha_tensors):
     update_rules.append( {
         'operation_type':'gtp',
         'gtp_spec':gengtp(gctf_model, 'gtp_d2_delta_'+ltn, ['gtp_d2_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors, full_tensor_name)
     } )
+
 
 def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
     if factorization_index == 0:
@@ -306,15 +311,177 @@ def gen_update_rules(spark, gctf_model):
 
     return update_rules
 
-def calculate_divergence():
-    pass
-    
+def get_beta_divergence(spark, all_tensors_config, x, mu, p):
+    assert isinstance(x, basestring) and isinstance(mu, basestring), 'x and mu must be strings containing tensor names in the gctf model'
+    # TODO: assert tensors exist,
+    # TODOL assert tensors have 'df' element
+
+    assert p==1, 'get_beta_divergence: general beta divergence not implemented yet'
+
+    # faster equation for beta divergence
+    if p == 1:
+        operation = {
+            'operation_type':'hadamard',
+            'output':'gtp_beta_divergence',
+            'input':{
+                'combination_operator':operator.add,
+                'arguments':[
+                    {
+                        'data':mu
+                    },
+                    {
+                        'suboperation':{
+                            'combination_operator':operator.sub,
+                            'arguments':[
+                                {
+                                    'suboperation':{
+                                        'combination_operator':operator.sub,
+                                        'arguments':[
+                                            {
+                                                'suboperation':{
+                                                    'combination_operator':operator.mul,
+                                                    'arguments':[
+                                                        {
+                                                            'data':x
+                                                        },
+                                                        {
+                                                            'data':x,
+                                                            'pre_processor':{
+                                                                'operator':'log'
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                'suboperation':{
+                                                    'combination_operator':operator.mul,
+                                                    'arguments':[
+                                                        {
+                                                            'data':x
+                                                        },
+                                                        {
+                                                            'data':mu,
+                                                            'pre_processor':{
+                                                                'operator':'log'
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                                {
+                                    'data':x
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+
+    else:
+        raise Exception('other p not implemented')
+
+        # # TODO: must take limit of this expression to find the general beta divergence result
+    # operation = {
+    #     'operation_type':'hadamard',
+    #     'output':'gtp_beta_divergence',
+    #     'input':{
+    #         'combination_operator':operator.sub,
+    #         'arguments':[
+    #             {
+    #                 'suboperation':{
+    #                     'combination_operator':operator.truediv,
+    #                     'arguments':[
+    #                         {
+    #                             'data': x,
+    #                             'pre_processor': {
+    #                                 'operator':'pow',
+    #                                 'argument':2-p
+    #                             }
+    #                         },
+    #                         {
+    #                             'data':(1-p)*(2-p)
+    #                         }
+    #                     ]
+    #                 },
+    #             },
+    #             {
+    #                 'suboperation': {
+    #                     'combination_operator':operator.add,
+    #                     'arguments':[
+    #                         {
+    #                             'suboperation':{
+    #                                 'combination_operator':operator.truediv,
+    #                                 'arguments':[
+    #                                     {
+    #                                         'suboperation':{
+    #                                             'combination_operator':operator.mul,
+    #                                             'arguments':[
+    #                                                 {
+    #                                                     'data':x
+    #                                                 },
+    #                                                 {
+    #                                                     'data':mu,
+    #                                                     'pre_processor':{
+    #                                                         'operator':'pow',
+    #                                                         'argument':1-p
+    #                                                     }
+    #                                                 }
+    #                                             ]
+    #                                         }
+    #                                     },    
+    #                                     {
+    #                                         'data':1-p
+    #                                     }
+    #                                 ]
+    #                             }
+    #                         },
+    #                         {
+    #                             'suboperation':{
+    #                                 'combination_operator':operator.truediv,
+    #                                 'arguments':[
+    #                                     {
+    #                                         'data':mu,
+    #                                         'pre_processor':{
+    #                                             'operator':'pow',
+    #                                             'argument':2-p
+    #                                         }
+    #                                     },
+    #                                     {
+    #                                         'data':2-p
+    #                                     }
+    #                                 ]
+    #                             }
+    #                         }
+    #                     ]
+    #                 }
+    #             }
+    #         ]
+    #     }
+    # }
+
+
+    hadamard_df = hadamard(spark, all_tensors_config, operation, debug=True)
+    return float(hadamard_df.groupBy().sum('value').collect()[0]['sum(value)'])
+
+def calculate_divergence(spark, gctf_model):
+    for factorization in gctf_model['config']['factorizations']:
+        dv = get_beta_divergence(spark, gctf_model['tensors'], factorization['observed_tensor'], 'gtp_hat_'+factorization['observed_tensor'], factorization['p'])
+        factorization['divergence_values'].append( dv )
+
 
 def gctf(spark, gctf_model, iteration_num):
     update_rules = gen_update_rules(spark, gctf_model)
     fp = open('/tmp/rules', 'w')
     json.dump( update_rules, fp, indent=4, sort_keys=True, cls=ComplexEncoder )
     fp.close()
+
+    for factorization in gctf_model['config']['factorizations']:
+        factorization['divergence_values'] = []
 
     for epoch_index in range(iteration_num):
         for update_rule in update_rules:
@@ -325,7 +492,7 @@ def gctf(spark, gctf_model, iteration_num):
             else:
                 raise Exception('unknown opreation_type %s' %update_rule)
 
-        calculate_divergence()
+        calculate_divergence(spark, gctf_model)
 
 if __name__ == '__main__':
     gctf_model = {
@@ -379,4 +546,7 @@ if __name__ == '__main__':
     for tensor_name in gctf_model['tensors']:
         gctf_model['tensors'][tensor_name]['df'] = read_tensor_data_from_hdfs(spark, gctf_model['tensors'], tensor_name, gctf_data_path)
     gctf(spark, gctf_model, 10)
+
+    print( json.dumps( gctf_model, indent=4, sort_keys=True, cls=ComplexEncoder ) )
+
     spark.stop()

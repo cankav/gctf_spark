@@ -158,6 +158,8 @@ class ComplexEncoder(json.JSONEncoder):
             return '/'
         elif obj == operator.add:
             return '+'
+        elif obj == operator.sub:
+            return '-'
         elif isinstance(obj, DataFrame):
             return str(obj)
 

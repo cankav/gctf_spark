@@ -2,6 +2,8 @@ MAIN_PY=$1
 
 echo "running $MAIN_PY"
 
+export HADOOP_USER_NAME=sprk;
+
 if [ $MAIN_PY = "gtp.py" ]
 then
     rm /tmp/gtp*.csv
@@ -13,7 +15,6 @@ then
     $HADOOP_HOME/bin/hadoop fs -rm -r hdfs://spark-master0-dsl05:9000/gctf_data/gtp*.csv hdfs://spark-master0-dsl05:9000/gctf_data/gctf_test_*.csv
 fi
 
-export HADOOP_USER_NAME=sprk;
 /home/sprk/spark-2.3.0-bin-hadoop2.7/bin/spark-submit --master spark://spark-master0-dsl05:7077 --conf "spark.executor.memory=5500m" --total-executor-cores 1 --py-files utils.py,gtp.py,hadamard.py $MAIN_PY
 
 # TODO: add test all command here

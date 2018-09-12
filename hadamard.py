@@ -5,13 +5,18 @@ from utils import ComplexEncoder
 import json
 from utils import is_number
 from pyspark.sql import DataFrame
+from pyspark.sql import Column
 import os
 from pyspark.sql import SparkSession
 from utils import read_tensor_data_from_hdfs
+from pyspark.sql import functions as PysparkSQLFunctions
 
 def apply_pre_processor_helper(value, pre_processor_spec):
     if pre_processor_spec['operator'] == 'pow':
+        # TODO: use pyspark.sql.functions.pow(col1, col2)
         return pow(value, pre_processor_spec['argument'])
+    elif pre_processor_spec['operator'] == 'log':
+        return PysparkSQLFunctions.log(value)
     else:
         raise Exception('unknown pre_processor %s' %pre_processor_spec)
 
@@ -43,16 +48,18 @@ def apply_pre_processor(de_prep):
     return output_element
 
 
-def process_operation(spark, all_tensors_config, input_spec, level=0):
+# TODO: remove suboperation - redundant level
+def process_operation(spark, all_tensors_config, input_spec, level=0, debug=False):
     # prepare output element (DataFrame or numeric) for all operands
     global process_operation_index_set # used for sanity checking on master node
 
     all_arguments = []
     for argument in input_spec['arguments']:
         if 'suboperation' in argument:
-            all_arguments.append( (process_operation(spark, all_tensors_config, argument['suboperation'], level+1),) )
+            all_arguments.append( (process_operation(spark, all_tensors_config, argument['suboperation'], level=level+1, debug=debug),) )
         else:
             # fetch data element
+            assert 'data' in argument, 'process_operation: if argument is not a suboperation, it must have a data element, this argument does not have it, bad argument bad! %s' % json.dumps(argument, indent=4, sort_keys=True, cls=ComplexEncoder )
             data_element = argument['data'] # can be a string representing a dataframe, can be a scalar numeric value
             if isinstance(data_element, basestring):
                 tensor_name = data_element
@@ -83,6 +90,8 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
 
     # apply arithmetic operation with pre-processor and return (data_element, pre_processor) pair
     for de_prep_index, de_prep in enumerate(all_arguments):
+        # TODO: need to check if level 0 should have more than 1 argument? NOT SURE?
+
         pre_processed_de = apply_pre_processor(de_prep) # output_element may be a DataFrame or scalar numeric
 
         if de_prep_index == 0:
@@ -101,8 +110,6 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
                 output_de = pre_processed_de.withColumn('final_output', input_spec['combination_operator'](output_de, pre_processed_de.output))
 
             elif isinstance(output_de, DataFrame) and not isinstance(pre_processed_de, DataFrame):
-                print('was %s' %output_de)
-                print('was %s' %pre_processed_de)
                 output_de = output_de.withColumn('final_output', input_spec['combination_operator'](output_de.output, pre_processed_de))
 
             else: # both numeric
@@ -111,9 +118,12 @@ def process_operation(spark, all_tensors_config, input_spec, level=0):
     if isinstance(output_de, DataFrame):
         output_de = output_de.drop('output', 'value').withColumnRenamed('final_output', 'value')
 
+    if debug:
+        print('hadamard input_spec %s level %s output_de %s values %s' %(json.dumps( input_spec, indent=4, sort_keys=True, cls=ComplexEncoder ), level,output_de, output_de.collect()))
+
     return output_de
 
-def hadamard(spark, all_tensors_config, update_rule):
+def hadamard(spark, all_tensors_config, update_rule, debug=False):
     # 'input': {
     #   'combination_operator': < built - in function add > ,
     #   'arguments': [{
@@ -160,7 +170,7 @@ def hadamard(spark, all_tensors_config, update_rule):
 
     global process_operation_index_set
     process_operation_index_set=None
-    return process_operation(spark, all_tensors_config, update_rule['input'])
+    return process_operation(spark, all_tensors_config, update_rule['input'], debug=debug)
     
 
 if __name__ == '__main__':
@@ -488,8 +498,7 @@ if __name__ == '__main__':
                             {
                                 'data':3,
                                 'pre_processor':{
-                                    'operator':'pow',
-                                    'argument':-1
+                                    'operator':'log'
                                 }
                             },
                             {
@@ -503,25 +512,25 @@ if __name__ == '__main__':
     })
 
     def hef(v):
-        return v*(1.0/3*v)
+        return v*(math.log(3)*v)
 
     for row in result.collect():
         if row.i == 1 and row.k == 1: # 10
-            assert row['value'] == hef(10), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(10)), 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
-            assert row['value'] == hef(30), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(30)), 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 3: # 50
-            assert row['value'] == hef(50), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(50)), 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 4: # 70
-            assert row['value'] == hef(70), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(70)), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 1: # 20
-            assert row['value'] == hef(20), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(20)), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 2: # 40
-            assert row['value'] == hef(40), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(40)), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 3: # 60
-            assert row['value'] == hef(60), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(60)), 'wrong output %s' %str(row)
         elif row.i == 2 and row.k == 4: # 80
-            assert row['value'] == hef(80), 'wrong output %s' %str(row)
+            assert int(row['value']) == int(hef(80)), 'wrong output %s' %str(row)
         else:
             raise Exception('unexpected index values %s' %str(row))
 
