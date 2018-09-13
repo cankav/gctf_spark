@@ -24,6 +24,7 @@ def gtp(spark, gtp_spec, gctf_model=None):
     multiply_column_list = []
     for input_tensor_name in gtp_spec['config']['input']:
         F_df = F_df.join( gtp_spec['tensors'][input_tensor_name]['df'], gtp_spec['tensors'][input_tensor_name]['indices'], 'inner' )
+        print('was %s ' %gtp_spec['tensors'][input_tensor_name]['df'])
         multiply_column_list.append(gtp_spec['tensors'][input_tensor_name]['df'].value)
     F_df = F_df.withColumn('f_tensor_value', reduce( operator.mul, multiply_column_list ))
     

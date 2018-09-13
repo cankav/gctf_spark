@@ -24,6 +24,7 @@ def apply_pre_processor_helper(value, pre_processor_spec):
 
 
 def apply_pre_processor(de_prep):
+    print('apply_pre_processor')
     data_element = de_prep[0]
     if len(de_prep) == 1:
         # no pre_processor
@@ -92,8 +93,6 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
 
     # apply arithmetic operation with pre-processor and return (data_element, pre_processor) pair
     for de_prep_index, de_prep in enumerate(all_arguments):
-        # TODO: need to check if level 0 should have more than 1 argument? NOT SURE?
-
         pre_processed_de = apply_pre_processor(de_prep) # output_element may be a DataFrame or scalar numeric
 
         if de_prep_index == 0:
@@ -101,6 +100,8 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
 
         else:
             # got 2 elements to merge with input_spec['combination_operator']: output_de and pre_processed_de, each one may be a DataFrame or scalar numeric
+            assert input_spec['combination_operator'], 'combination operator can not be None but found %s' %input_spec['combination_operator']
+            print ('WAS combination_operator %s' %input_spec['combination_operator'])
             if isinstance(output_de, DataFrame) and isinstance(pre_processed_de, DataFrame):
                 output_de = output_de.join(
                     pre_processed_de,
@@ -117,7 +118,8 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
             else: # both numeric
                 output_de = input_spec['combination_operator'](output_de, pre_processed_de)
 
-    if isinstance(output_de, DataFrame):
+    # if there is only 1 argument this is only a pre_processor operation, do not touch value column
+    if len(all_arguments) > 1 and isinstance(output_de, DataFrame): # TODO: check isinstance check required?
         output_de = output_de.drop('output', 'value').withColumnRenamed('final_output', 'value')
 
     if debug:
@@ -174,6 +176,8 @@ def hadamard(spark, all_tensors_config, update_rule, debug=False):
     process_operation_index_set=None
     output_tensor_name = update_rule['output']
     all_tensors_config[output_tensor_name]['df'] = process_operation(spark, all_tensors_config, update_rule['input'], debug=debug)
+
+    print('hadamard output %s' %all_tensors_config[output_tensor_name]['df'])
 
 
 if __name__ == '__main__':
