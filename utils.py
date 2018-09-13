@@ -2,9 +2,10 @@ import json
 import operator
 import os
 import random
-from pyspark.sql.functions import lit
+#from pyspark.sql.functions import lit
 from hdfs import InsecureClient
 from pyspark.sql import DataFrame
+from pyspark.sql import Column
 
 gctf_data_path='hdfs://spark-master0-dsl05:9000/gctf_data' #'/home/sprk/shared/gctf_data'
 gctf_data_path_no_url='/gctf_data'
@@ -151,8 +152,11 @@ def linear_index_to_DOK_index(linear_index, tensor_indices, all_cardinalities):
 #         return tuple(tensor_index_values_list)
 
 class ComplexEncoder(json.JSONEncoder):
+
     def default(self, obj):
-        if obj  == operator.mul:
+        if isinstance(obj, Column):
+            return str(obj)
+        elif obj == operator.mul:
             return '*'
         elif obj == operator.truediv:
             return '/'
@@ -165,14 +169,14 @@ class ComplexEncoder(json.JSONEncoder):
 
         return json.JSONEncoder.default(self, obj)
 
-# from https://stackoverflow.com/q/354038/1056345
-def is_number(s):
-    try:
-        float(s)
-        return True
-    except ValueError:
-        return False
-#################################################
+# # from https://stackoverflow.com/q/354038/1056345
+# def is_number(s):
+#     try:
+#         float(s)
+#         return True
+#     except ValueError:
+#         return False
+# #################################################
 
 def get_observed_tensor_names_of_latent_tensor(gctf_model, ltn):
     otn_with_ltn=[]

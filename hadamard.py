@@ -3,13 +3,15 @@ import functools
 from utils import gctf_data_path
 from utils import ComplexEncoder
 import json
-from utils import is_number
 from pyspark.sql import DataFrame
 from pyspark.sql import Column
 import os
 from pyspark.sql import SparkSession
 from utils import read_tensor_data_from_hdfs
 from pyspark.sql import functions as PysparkSQLFunctions
+from pyspark.sql.functions import lit
+from pyspark.sql.functions import array_contains
+import math
 
 def apply_pre_processor_helper(value, pre_processor_spec):
     if pre_processor_spec['operator'] == 'pow':
@@ -27,7 +29,7 @@ def apply_pre_processor(de_prep):
         # no pre_processor
         if isinstance(data_element, DataFrame):
             output_element = data_element.withColumnRenamed('value', 'output')
-        elif is_number(data_element):
+        elif isinstance(data_element, Column): #is_number(data_element):
             output_element = data_element
         else:
             raise Exception('unknown data element (2)')
@@ -37,7 +39,7 @@ def apply_pre_processor(de_prep):
         pre_processor_spec = de_prep[1]
         if isinstance(data_element, DataFrame):
             output_element = data_element.withColumn('output', apply_pre_processor_helper(data_element['value'], pre_processor_spec))
-        elif is_number(data_element):
+        elif isinstance(data_element, Column): #is_number(data_element):
             output_element = apply_pre_processor_helper(data_element, pre_processor_spec)
         else:
             raise Exception('unknown data element (3)')
@@ -71,7 +73,7 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
                     assert set(all_tensors_config[tensor_name]['indices']) == process_operation_index_set, 'hadamard: tensor operands must have same set of indices'
                 process_operation_index_set = set(all_tensors_config[tensor_name]['indices'])
 
-            elif is_number(data_element):
+            elif isinstance(data_element, Column): # or is_number(data_element):
                 data_element = data_element
 
             else:
@@ -170,8 +172,9 @@ def hadamard(spark, all_tensors_config, update_rule, debug=False):
 
     global process_operation_index_set
     process_operation_index_set=None
-    return process_operation(spark, all_tensors_config, update_rule['input'], debug=debug)
-    
+    output_tensor_name = update_rule['output']
+    all_tensors_config[output_tensor_name]['df'] = process_operation(spark, all_tensors_config, update_rule['input'], debug=debug)
+
 
 if __name__ == '__main__':
     tensors = {
@@ -179,9 +182,9 @@ if __name__ == '__main__':
             'indices' : [ 'i', 'k' ],
             'local_filename' : '/home/sprk/shared/gctf_data/gtp_test_input1.csv'
         },
-        'gtp_test_input2' : {
-            'indices' :  [ 'j', 'k' ],
-            'local_filename' : '/home/sprk/shared/gctf_data/gtp_test_input2.csv',
+        'gtp_test_output_hadamard' : {
+            'indices' :  [ 'i', 'k' ],
+            'local_filename' : '/home/sprk/shared/gctf_data/gtp_test_output_hadamard.csv',
         }
     }
 
@@ -203,8 +206,9 @@ if __name__ == '__main__':
 
 
     # TEST CASE 1: hadamard( DataFrame, DataFrame )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul, #input must be scalar or same size as output
             'arguments': [
@@ -218,7 +222,7 @@ if __name__ == '__main__':
         }
     })
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         if row.i == 1 and row.k == 1:
             assert row['value'] == 100, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2:
@@ -241,8 +245,9 @@ if __name__ == '__main__':
     print('test case 1 done')
 
     # TEST CASE 2: hadamard( DataFrame, scalar number )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul,
             'arguments': [
@@ -250,13 +255,13 @@ if __name__ == '__main__':
                     'data':'gtp_test_input1'
                 },
                 {
-                    'data':2
+                    'data':lit(2)
                 }
             ]
         }
     })
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         if row.i == 1 and row.k == 1: # 10
             assert row['value'] == 20, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
@@ -279,13 +284,14 @@ if __name__ == '__main__':
     print('test case 2 done')
 
     # TEST CASE 3: hadamard( scalar number, DataFrame )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul,
             'arguments': [
                 {
-                    'data':3
+                    'data':lit(3)
                 },
                 {
                     'data':'gtp_test_input1'
@@ -294,7 +300,7 @@ if __name__ == '__main__':
         }
     })
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         if row.i == 1 and row.k == 1: # 10
             assert row['value'] == 30, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
@@ -317,22 +323,23 @@ if __name__ == '__main__':
     print('test case 3 done')
 
     # TEST CASE 4: hadamard( scalar number, number )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul,
             'arguments': [
                 {
-                    'data':3
+                    'data':lit(3)
                 },
                 {
-                    'data':4
+                    'data':lit(4)
                 }
             ]
         }
     })
 
-    assert result==12, 'wrong output %s' %str(result)
+    assert int(eval(tensors['gtp_test_output_hadamard']['df']._jc.toString())) == 12, 'wrong output %s' %str(tensors['gtp_test_output_hadamard']['df'])
     print('test case 4 done')
 
 
@@ -340,8 +347,9 @@ if __name__ == '__main__':
 
 
     # TEST CASE 5: hadamard( DataFrame (pre_processor), DataFrame )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul, #input must be scalar or same size as output
             'arguments': [
@@ -359,14 +367,15 @@ if __name__ == '__main__':
         }
     })
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         assert row['value'] == 1, 'wrong output %s' %str(row)
 
     print('test case 5 done')
 
     # TEST CASE 6: hadamard( DataFrame, DataFrame (pre_processor))
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul, #input must be scalar or same size as output
             'arguments': [
@@ -384,14 +393,15 @@ if __name__ == '__main__':
         }
     })
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         assert row['value'] == 1, 'wrong output %s' %str(row)
 
     print('test case 6 done')
 
     # TEST CASE 7: hadamard( DataFrame(pre_processor), DataFrame(pre_processor) )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul,
             'arguments': [
@@ -413,7 +423,7 @@ if __name__ == '__main__':
         }
     })
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         if row.i == 1 and row.k == 1: # 10
             assert abs(row['value'] - 1.0/100) < 0.0001, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
@@ -436,8 +446,9 @@ if __name__ == '__main__':
     print('test case 7 done')
 
     # TEST CASE 8: hadamard( DataFrame, scalar number (pre_processor) )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul,
             'arguments': [
@@ -445,7 +456,7 @@ if __name__ == '__main__':
                     'data':'gtp_test_input1'
                 },
                 {
-                    'data':2,
+                    'data':lit(2),
                     'pre_processor':{
                         'operator':'pow',
                         'argument':2
@@ -455,7 +466,7 @@ if __name__ == '__main__':
         }
     })
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         if row.i == 1 and row.k == 1: # 10
             assert row['value'] == 40, 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30
@@ -483,8 +494,9 @@ if __name__ == '__main__':
 
 
     # TEST CASE 9: hadamard( DataFrame, suboperation(scalar number, DataFrame) )
-    result = hadamard(spark, tensors, {
+    hadamard(spark, tensors, {
         'operation_type':'hadamard',
+        'output': 'gtp_test_output_hadamard',
         'input':{
             'combination_operator':operator.mul, #input must be scalar or same size as output
             'arguments': [
@@ -496,7 +508,7 @@ if __name__ == '__main__':
                         'combination_operator':operator.mul,
                         'arguments':[
                             {
-                                'data':3,
+                                'data':lit(3),
                                 'pre_processor':{
                                     'operator':'log'
                                 }
@@ -514,7 +526,7 @@ if __name__ == '__main__':
     def hef(v):
         return v*(math.log(3)*v)
 
-    for row in result.collect():
+    for row in tensors['gtp_test_output_hadamard']['df'].collect():
         if row.i == 1 and row.k == 1: # 10
             assert int(row['value']) == int(hef(10)), 'wrong output %s' %str(row)
         elif row.i == 1 and row.k == 2: # 30

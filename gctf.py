@@ -17,6 +17,7 @@ from utils import full_tensor_name
 from utils import generate_hdfs_tensor_data
 from utils import generate_spark_tensor
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import lit
 
 def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tensor_xhat_name):
     update_rules.append( {
@@ -83,7 +84,7 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
                 'combination_operator':operator.mul, #input must be scalar or same size as output
                 'arguments':[
                     {
-                        'data':factorization['phi'],
+                        'data':lit(factorization['phi']),
                         'pre_processor':{
                             'operator':'pow',
                             'argument':-1
@@ -112,7 +113,7 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
                             'combination_operator':operator.mul,
                             'arguments':[
                                 {
-                                    'data':factorization['phi'],
+                                    'data':lit(factorization['phi']),
                                     'pre_processor':{
                                         'operator':'pow',
                                         'argument':-1
@@ -138,7 +139,7 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
                 'combination_operator':operator.mul, #input must be scalar or same size as output
                 'arguments':[
                     {
-                        'data':factorization['phi'],
+                        'data':lit(factorization['phi']),
                         'pre_processor':{
                             'operator':'pow',
                             'argument':-1
@@ -167,7 +168,7 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
                             'combination_operator':operator.mul,
                             'arguments':[
                                 {
-                                    'data':factorization['phi'],
+                                    'data':lit(factorization['phi']),
                                     'pre_processor':{
                                         'operator':'pow',
                                         'argument':-1
@@ -200,7 +201,7 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
             'combination_operator':operator.mul,
             'arguments' : [
                 {
-                    'data':ltn
+                    'data':lit(ltn)
                 },
                 {
                     'suboperation':{
@@ -404,7 +405,7 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p):
     #                             }
     #                         },
     #                         {
-    #                             'data':(1-p)*(2-p)
+    #                             'data':lit((1-p)*(2-p))
     #                         }
     #                     ]
     #                 },
@@ -435,7 +436,7 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p):
     #                                         }
     #                                     },    
     #                                     {
-    #                                         'data':1-p
+    #                                         'data':lit(1-p)
     #                                     }
     #                                 ]
     #                             }
@@ -452,7 +453,7 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p):
     #                                         }
     #                                     },
     #                                     {
-    #                                         'data':2-p
+    #                                         'data':lit(2-p)
     #                                     }
     #                                 ]
     #                             }
