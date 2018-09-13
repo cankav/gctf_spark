@@ -466,8 +466,14 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p):
     # }
 
 
-    hadamard_df = hadamard(spark, all_tensors_config, operation, debug=True)
+    hadamard_df = hadamard(spark, all_tensors_config, operation, output_type='value', debug=True)
+    #print('was1 %s' %(hadamard_df.collect()) )
+    #print('was2 %s' %hadamard_df.groupBy().sum('value'))
+    #print('was3 %s' %hadamard_df.groupBy().sum('value').collect())
+    #print('was4 %s' %hadamard_df.groupBy().sum('value').collect()[0])
+    #print('was5 %s' %hadamard_df.groupBy().sum('value').collect()[0]['sum(value)'])
     return float(hadamard_df.groupBy().sum('value').collect()[0]['sum(value)'])
+
 
 def calculate_divergence(spark, gctf_model):
     for factorization in gctf_model['config']['factorizations']:
@@ -487,9 +493,9 @@ def gctf(spark, gctf_model, iteration_num):
     for epoch_index in range(iteration_num):
         for update_rule in update_rules:
             if update_rule['operation_type'] == 'gtp':
-                gtp(spark, update_rule['gtp_spec'], gctf_model)
+                gtp(spark, update_rule['gtp_spec'], gctf_model, debug=False)
             elif update_rule['operation_type'] == 'hadamard':
-                hadamard(spark, gctf_model['tensors'], update_rule)
+                hadamard(spark, gctf_model['tensors'], update_rule, debug=True)
             else:
                 raise Exception('unknown opreation_type %s' %update_rule)
 

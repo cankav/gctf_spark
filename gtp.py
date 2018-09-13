@@ -7,7 +7,7 @@ import operator
 from utils import create_full_tensor
 from utils import full_tensor_name
 
-def gtp(spark, gtp_spec, gctf_model=None):
+def gtp(spark, gtp_spec, gctf_model=None, debug=False):
     print('EXECUTING RULE: starting GTP operation gtp_spec %s' %json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ))
 
     if full_tensor_name not in gtp_spec['tensors']:
@@ -24,7 +24,6 @@ def gtp(spark, gtp_spec, gctf_model=None):
     multiply_column_list = []
     for input_tensor_name in gtp_spec['config']['input']:
         F_df = F_df.join( gtp_spec['tensors'][input_tensor_name]['df'], gtp_spec['tensors'][input_tensor_name]['indices'], 'inner' )
-        print('was %s ' %gtp_spec['tensors'][input_tensor_name]['df'])
         multiply_column_list.append(gtp_spec['tensors'][input_tensor_name]['df'].value)
     F_df = F_df.withColumn('f_tensor_value', reduce( operator.mul, multiply_column_list ))
     
@@ -33,6 +32,18 @@ def gtp(spark, gtp_spec, gctf_model=None):
     output_df = F_df.groupBy(gtp_spec['tensors'][output_tensor_name]['indices']).sum('f_tensor_value').withColumnRenamed('sum(f_tensor_value)', 'value')
 
     gtp_spec['tensors'][output_tensor_name]['df'] = output_df
+
+    if debug:
+        output_values = output_df.collect()
+        print('gtp: gtp_spec %s output_values %s' %(json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ), output_values))
+
+        for row in output_values:
+            if row['value'] is None:
+                print( 'found None value in output in row %s printing input tensor values' %str(row))
+                print(gtp_spec['tensors'])
+                for tensor_name in gtp_spec['tensors']:
+                    print('tensor %s values %s' %(tensor_name, gtp_spec['tensors'][tensor_name]['df'].collect()))
+                raise Exception('found None in hadamard')
 
 
 if __name__ == '__main__':

@@ -24,7 +24,6 @@ def apply_pre_processor_helper(value, pre_processor_spec):
 
 
 def apply_pre_processor(de_prep):
-    print('apply_pre_processor')
     data_element = de_prep[0]
     if len(de_prep) == 1:
         # no pre_processor
@@ -101,7 +100,6 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
         else:
             # got 2 elements to merge with input_spec['combination_operator']: output_de and pre_processed_de, each one may be a DataFrame or scalar numeric
             assert input_spec['combination_operator'], 'combination operator can not be None but found %s' %input_spec['combination_operator']
-            print ('WAS combination_operator %s' %input_spec['combination_operator'])
             if isinstance(output_de, DataFrame) and isinstance(pre_processed_de, DataFrame):
                 output_de = output_de.join(
                     pre_processed_de,
@@ -123,11 +121,23 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
         output_de = output_de.drop('output', 'value').withColumnRenamed('final_output', 'value')
 
     if debug:
-        print('hadamard input_spec %s level %s output_de %s values %s' %(json.dumps( input_spec, indent=4, sort_keys=True, cls=ComplexEncoder ), level,output_de, output_de.collect()))
+        output_values = output_de.collect()
+        print('hadamard input_spec %s level %s output_de %s values %s' %(json.dumps( input_spec, indent=4, sort_keys=True, cls=ComplexEncoder ), level,output_de, output_values))
+
+        for row in output_values:
+            if row['value'] is None:
+                print( 'found None value in output in row %s printing input tensor values' %str(row))
+                print(all_tensors_config)
+                for tensor_name in all_tensors_config:
+                    print('tensor %s values %s' %(tensor_name, all_tensors_config[tensor_name]['df'].collect()))
+                raise Exception('found None in hadamard')
+                
+        
 
     return output_de
 
-def hadamard(spark, all_tensors_config, update_rule, debug=False):
+
+def hadamard(spark, all_tensors_config, update_rule, output_type='tensor', debug=False):
     # 'input': {
     #   'combination_operator': < built - in function add > ,
     #   'arguments': [{
@@ -175,9 +185,16 @@ def hadamard(spark, all_tensors_config, update_rule, debug=False):
     global process_operation_index_set
     process_operation_index_set=None
     output_tensor_name = update_rule['output']
-    all_tensors_config[output_tensor_name]['df'] = process_operation(spark, all_tensors_config, update_rule['input'], debug=debug)
+    output_df = process_operation(spark, all_tensors_config, update_rule['input'], debug=debug)
+    if output_type == 'tensor':
+        all_tensors_config[output_tensor_name]['df'] = output_df
+        output = None
+    elif output_type == 'value':
+        output = output_df
+    else:
+        raise Exception('unknown output_type')
 
-    print('hadamard output %s' %all_tensors_config[output_tensor_name]['df'])
+    return output
 
 
 if __name__ == '__main__':
@@ -553,3 +570,6 @@ if __name__ == '__main__':
     print('test case 9 done')
 
     print('all tests completed')
+
+
+    # TODO: add none exception case with debug mode on
