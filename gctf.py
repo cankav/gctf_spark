@@ -201,7 +201,7 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
             'combination_operator':operator.mul,
             'arguments' : [
                 {
-                    'data':lit(ltn)
+                    'data':ltn
                 },
                 {
                     'suboperation':{
@@ -495,7 +495,7 @@ def gctf(spark, gctf_model, iteration_num):
             if update_rule['operation_type'] == 'gtp':
                 gtp(spark, update_rule['gtp_spec'], gctf_model, debug=False)
             elif update_rule['operation_type'] == 'hadamard':
-                hadamard(spark, gctf_model['tensors'], update_rule, debug=True)
+                hadamard(spark, gctf_model['tensors'], update_rule, debug=False)
             else:
                 raise Exception('unknown opreation_type %s' %update_rule)
 
