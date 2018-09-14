@@ -466,7 +466,7 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p):
     # }
 
 
-    hadamard_df = hadamard(spark, all_tensors_config, operation, output_type='value', debug=True)
+    hadamard_df = hadamard(spark, all_tensors_config, operation, output_type='value') #, debug=True)
     #print('was1 %s' %(hadamard_df.collect()) )
     #print('was2 %s' %hadamard_df.groupBy().sum('value'))
     #print('was3 %s' %hadamard_df.groupBy().sum('value').collect())
@@ -476,9 +476,11 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p):
 
 
 def calculate_divergence(spark, gctf_model):
-    for factorization in gctf_model['config']['factorizations']:
+    for factorization_index, factorization in enumerate(gctf_model['config']['factorizations']):
         dv = get_beta_divergence(spark, gctf_model['tensors'], factorization['observed_tensor'], 'gtp_hat_'+factorization['observed_tensor'], factorization['p'])
         factorization['divergence_values'].append( dv )
+        print('calculate_divergence: factorization_index %s divergence_values %s' %(factorization_index, factorization['divergence_values']))
+    # TODO: add assertion for divergence value reduction
 
 
 def gctf(spark, gctf_model, iteration_num):
