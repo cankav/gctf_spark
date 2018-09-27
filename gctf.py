@@ -6,8 +6,6 @@ from gtp import gtp
 from utils import read_tensor_data_from_hdfs
 from utils import gctf_data_path
 from hadamard import hadamard
-from generate_random_tensor_data import generate_random_tensor_data_local
-import os
 import json
 from utils import ComplexEncoder
 from utils import get_observed_tensor_names_of_latent_tensor
@@ -16,6 +14,7 @@ from utils import create_full_tensor
 from utils import full_tensor_name
 from utils import generate_hdfs_tensor_data
 from utils import generate_spark_tensor
+from utils import getCachedDataFrame
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import lit
 
@@ -312,7 +311,7 @@ def gen_update_rules(spark, gctf_model):
 
     return update_rules
 
-def get_beta_divergence(spark, all_tensors_config, x, mu, p):
+def get_beta_divergence(spark, all_tensors_config, x, mu, p, epoch_index, factorization_index):
     assert isinstance(x, basestring) and isinstance(mu, basestring), 'x and mu must be strings containing tensor names in the gctf model'
     # TODO: assert tensors exist,
     # TODOL assert tensors have 'df' element
@@ -472,12 +471,13 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p):
     #print('was3 %s' %hadamard_df.groupBy().sum('value').collect())
     #print('was4 %s' %hadamard_df.groupBy().sum('value').collect()[0])
     #print('was5 %s' %hadamard_df.groupBy().sum('value').collect()[0]['sum(value)'])
+    #hadamard_df.write.save('/gctf_data/results/get_beta_divergence_epoch_'+str(epoch_index)+'factorization_index'+str(factorization_index))
     return float(hadamard_df.groupBy().sum('value').collect()[0]['sum(value)'])
 
 
-def calculate_divergence(spark, gctf_model):
+def calculate_divergence(spark, gctf_model, epoch_index):
     for factorization_index, factorization in enumerate(gctf_model['config']['factorizations']):
-        dv = get_beta_divergence(spark, gctf_model['tensors'], factorization['observed_tensor'], 'gtp_hat_'+factorization['observed_tensor'], factorization['p'])
+        dv = get_beta_divergence(spark, gctf_model['tensors'], factorization['observed_tensor'], 'gtp_hat_'+factorization['observed_tensor'], factorization['p'], epoch_index, factorization_index)
         factorization['divergence_values'].append( dv )
         print('calculate_divergence: factorization_index %s divergence_values %s' %(factorization_index, factorization['divergence_values']))
     # TODO: add assertion for divergence value reduction
@@ -496,12 +496,20 @@ def gctf(spark, gctf_model, iteration_num):
         for update_rule in update_rules:
             if update_rule['operation_type'] == 'gtp':
                 gtp(spark, update_rule['gtp_spec'], gctf_model, debug=False)
+                gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'] = gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'].repartition(58)
+                gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'].cache()
+                gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'].localCheckpoint()
+                gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'] = getCachedDataFrame(spark, gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'])
             elif update_rule['operation_type'] == 'hadamard':
                 hadamard(spark, gctf_model['tensors'], update_rule, debug=False)
+                gctf_model['tensors'][ update_rule['output'] ]['df'] = gctf_model['tensors'][ update_rule['output'] ]['df'].repartition(58)
+                gctf_model['tensors'][ update_rule['output'] ]['df'].cache()
+                gctf_model['tensors'][ update_rule['output'] ]['df'].localCheckpoint()
+                gctf_model['tensors'][ update_rule['output'] ]['df'] = getCachedDataFrame( spark, gctf_model['tensors'][ update_rule['output'] ]['df'] )
             else:
                 raise Exception('unknown opreation_type %s' %update_rule)
 
-        calculate_divergence(spark, gctf_model)
+        calculate_divergence(spark, gctf_model, epoch_index)
 
 if __name__ == '__main__':
     gctf_model = {
@@ -551,6 +559,8 @@ if __name__ == '__main__':
         generate_hdfs_tensor_data( gctf_model['tensors'], gctf_model['config']['cardinalities'], tensor_name, test_tensors[tensor_name]['indices'])
 
     spark = SparkSession.builder.appName("gtp").getOrCreate()
+    spark.sparkContext.setCheckpointDir('/gctf_data/spark_checkpoints')
+    #spark.sparkContext.setLogLevel('DEBUG')
     # load hdfs data into spark memory
     for tensor_name in gctf_model['tensors']:
         gctf_model['tensors'][tensor_name]['df'] = read_tensor_data_from_hdfs(spark, gctf_model['tensors'], tensor_name, gctf_data_path)

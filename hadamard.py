@@ -10,7 +10,6 @@ from pyspark.sql import SparkSession
 from utils import read_tensor_data_from_hdfs
 from pyspark.sql import functions as PysparkSQLFunctions
 from pyspark.sql.functions import lit
-from pyspark.sql.functions import array_contains
 import math
 
 def apply_pre_processor_helper(value, pre_processor_spec):
@@ -131,9 +130,9 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
                 for tensor_name in all_tensors_config:
                     print('tensor %s values %s' %(tensor_name, all_tensors_config[tensor_name]['df'].collect()))
                 raise Exception('found None in hadamard')
-                
-        
 
+    if isinstance(output_de, DataFrame):
+        output_de.localCheckpoint()
     return output_de
 
 
@@ -571,5 +570,3 @@ if __name__ == '__main__':
 
     print('all tests completed')
 
-
-    # TODO: add none exception case with debug mode on

@@ -104,7 +104,7 @@ def read_tensor_data_from_hdfs(spark_session, all_tensors_config, tensor_name, r
 
     print('read_tensor_data: reading file %s with schema %s' %(hdfs_filename, schema))
 
-    tensor_df = spark_session.read.load(hdfs_filename, format="csv", sep=",", header="true", schema=schema) #, inferSchema="true")
+    tensor_df = spark_session.read.load(hdfs_filename, format="csv", sep=",", header="true", schema=schema, numPartitions=58) #, inferSchema="true")
     #tensor_def['data_local'] = tensor_data.collect() # TODO: remove collect dependency (working on same tensors to produce output does not work with map function) -> use single rdd with tensor data annotated with tensor name
 
     # # add missing columns
@@ -113,6 +113,7 @@ def read_tensor_data_from_hdfs(spark_session, all_tensors_config, tensor_name, r
     #     tensor_data = tensor_data.withColumn(mc, lit(None))
 
     tensor_df.cache()
+    tensor_df.checkpoint()
     return tensor_df
 
 def linear_index_to_DOK_index(linear_index, tensor_indices, all_cardinalities):
@@ -217,3 +218,8 @@ def generate_spark_tensor(spark_session, all_tensors_config, all_cardinalities, 
     generate_hdfs_tensor_data(all_tensors_config, all_cardinalities, new_tensor_name, new_tensor_indices)
     all_tensors_config[new_tensor_name]['df'] = read_tensor_data_from_hdfs(spark_session, all_tensors_config, new_tensor_name, gctf_data_path)
 
+# https://github.com/graphframes/graphframes/blob/master/src/main/scala/org/graphframes/lib/AggregateMessages.scala
+# https://issues.apache.org/jira/browse/SPARK-13346
+def getCachedDataFrame(spark, df):
+    rdd = df.rdd.cache()
+    return spark.createDataFrame(rdd, df.schema)

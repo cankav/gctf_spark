@@ -26,7 +26,8 @@ def gtp(spark, gtp_spec, gctf_model=None, debug=False):
         F_df = F_df.join( gtp_spec['tensors'][input_tensor_name]['df'], gtp_spec['tensors'][input_tensor_name]['indices'], 'inner' )
         multiply_column_list.append(gtp_spec['tensors'][input_tensor_name]['df'].value)
     F_df = F_df.withColumn('f_tensor_value', reduce( operator.mul, multiply_column_list ))
-    
+    F_df.localCheckpoint()
+
     # Calculate output tensor
     output_tensor_name = gtp_spec['config']['output']
     output_df = F_df.groupBy(gtp_spec['tensors'][output_tensor_name]['indices']).sum('f_tensor_value').withColumnRenamed('sum(f_tensor_value)', 'value')
