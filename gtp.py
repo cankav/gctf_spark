@@ -26,6 +26,7 @@ def gtp(spark, gtp_spec, gctf_model=None, debug=False):
         F_df = F_df.join( gtp_spec['tensors'][input_tensor_name]['df'], gtp_spec['tensors'][input_tensor_name]['indices'], 'inner' )
         multiply_column_list.append(gtp_spec['tensors'][input_tensor_name]['df'].value)
     F_df = F_df.withColumn('f_tensor_value', reduce( operator.mul, multiply_column_list ))
+    # TODO: test without localCheckpoint for performance
     F_df.localCheckpoint()
 
     # Calculate output tensor
@@ -38,9 +39,17 @@ def gtp(spark, gtp_spec, gctf_model=None, debug=False):
         output_values = output_df.collect()
         print('gtp: gtp_spec %s output_values %s' %(json.dumps( gtp_spec, indent=4, sort_keys=True, cls=ComplexEncoder ), output_values))
 
+        import math
         for row in output_values:
+            bad = False
             if row['value'] is None:
                 print( 'found None value in output in row %s printing input tensor values' %str(row))
+                bad = True
+            if math.isnan(row['value']):
+                print( 'found NaN value in output in row %s printing input tensor values' %str(row))
+                bad = True
+
+            if bad:
                 print(gtp_spec['tensors'])
                 for tensor_name in gtp_spec['tensors']:
                     print('tensor %s values %s' %(tensor_name, gtp_spec['tensors'][tensor_name]['df'].collect()))
@@ -76,6 +85,7 @@ if __name__ == '__main__':
     }
 
     spark = SparkSession.builder.appName("gtp").getOrCreate()
+    spark.sparkContext.setCheckpointDir('/gctf_data/spark_checkpoints')
 
     # put input local data onto hdfs
     local_files_str=''

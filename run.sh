@@ -13,6 +13,10 @@ elif [ $MAIN_PY == 'gctf.py' ]
 then
     rm /tmp/gtp*.csv /tmp/gctf_test_*.csv
     $HADOOP_HOME/bin/hadoop fs -rm -r hdfs://spark-master0-dsl05:9000/gctf_data/gtp*.csv hdfs://spark-master0-dsl05:9000/gctf_data/gctf_test_*.csv /gctf_data/results/*
+elif [ $MAIN_PY == 'test_rules' ]
+then
+    # nothing
+    echo ''
 fi
 
 CORES=10

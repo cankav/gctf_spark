@@ -15,11 +15,15 @@ from utils import full_tensor_name
 from utils import generate_hdfs_tensor_data
 from utils import generate_spark_tensor
 from utils import getCachedDataFrame
+from utils import genhadamard
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import lit
+from get_hadamard_operation_as_string import get_hadamard_operation_as_string
+
+DEBUG=True
 
 def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tensor_xhat_name):
-    update_rules.append( {
+    rule = genhadamard({
         'operation_type':'hadamard',
         'output':'gtp_d1_Q_v_'+observed_tensor_name,
         'input':{
@@ -37,18 +41,21 @@ def update_d1_Q_v(gctf_model, update_rules, observed_tensor_name, observed_tenso
                 }
             ]
         }
-    } )
+    })
+    update_rules.append(rule)
 
 
 def update_d1_delta(gctf_model, update_rules, latent_tensor_names, ltn, observed_tensor_name, other_Z_alpha_tensors):
+    [gtp_spec, operation_str] = gengtp(gctf_model, 'gtp_d1_delta_'+ltn, ['gtp_d1_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors, full_tensor_name)
     update_rules.append( {
         'operation_type':'gtp',
-        'gtp_spec':gengtp(gctf_model, 'gtp_d1_delta_'+ltn, ['gtp_d1_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors, full_tensor_name)
+        'gtp_spec':gtp_spec,
+        'operation_str':operation_str
     } )
 
 
 def update_d2_Q_v(update_rules, observed_tensor_name, observed_tensor_xhat_name, factorization):
-    update_rules.append( {
+    rule = genhadamard( {
         'operation_type':'hadamard',
         'output':'gtp_d2_Q_v_'+observed_tensor_name,
         'input':{
@@ -64,18 +71,20 @@ def update_d2_Q_v(update_rules, observed_tensor_name, observed_tensor_xhat_name,
             ]
         }
     } )
-
+    update_rules.append(rule)
 
 def update_d2_delta(gctf_model, update_rules, ltn, observed_tensor_name, other_Z_alpha_tensors):
+    [gtp_spec, operation_str] = gengtp(gctf_model, 'gtp_d2_delta_'+ltn, ['gtp_d2_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors, full_tensor_name)
     update_rules.append( {
         'operation_type':'gtp',
-        'gtp_spec':gengtp(gctf_model, 'gtp_d2_delta_'+ltn, ['gtp_d2_Q_v_'+observed_tensor_name] + other_Z_alpha_tensors, full_tensor_name)
+        'gtp_spec':gtp_spec,
+        'operation_str':operation_str
     } )
 
 
 def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
     if factorization_index == 0:
-        update_rules.append( {
+        rule = genhadamard( {
             #{end+1} = { '=', obj.d2_alpha(alpha), ['obj.config.tfmodel.phi_vector(' num2str(v_index) ')^-1 .* obj.config.tfmodel.d2_delta(' num2str(alpha) ').data'] };
             'operation_type':'hadamard',
             'output':'gtp_d2_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
@@ -95,9 +104,10 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
                 ]
             }
         } )
+        update_rules.append(rule)
 
     else:
-        update_rules.append( {
+        rule = genhadamard( {
             #{end+1} = { '=', obj.d2_alpha(alpha), ['obj.config.tfmodel.d2_alpha(' num2str(alpha) ').data + obj.config.tfmodel.phi_vector(' num2str(v_index) ')^-1 .* obj.config.tfmodel.d2_delta(' num2str(alpha) ').data'] };
             'operation_type':'hadamard',
             'output':'gtp_d2_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
@@ -127,11 +137,12 @@ def update_d2_alpha(update_rules, ltn, factorization_index, factorization):
                 ]
             }
         } )
+        update_rules.append(rule)
 
 
 def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factorization):
     if factorization_index == 0:
-        update_rules.append( {
+        rule = genhadamard( {
             'operation_type':'hadamard',
             'output':'gtp_d1_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
             'input':{
@@ -150,9 +161,10 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
                 ]
             }
         } )
+        update_rules.append(rule)
 
     else:
-        update_rules.append( {
+        rule = genhadamard( {
             'operation_type':'hadamard',
             'output':'gtp_d1_alpha_'+ltn+'_v_'+factorization['observed_tensor'],
             'input':{
@@ -182,17 +194,21 @@ def update_d1_alpha(gctf_model, update_rules, factorization_index, ltn, factoriz
                 ]
             }
         } )
+        update_rules.append(rule)
 
 
 def update_xhat(gctf_model, update_rules, observed_tensor_xhat_name, factorization):
+    [gtp_spec, operation_str] = gengtp(gctf_model, observed_tensor_xhat_name, factorization['latent_tensors'], full_tensor_name)
     update_rules.append( {
         'operation_type':'gtp',
-        'gtp_spec' : gengtp(gctf_model, observed_tensor_xhat_name, factorization['latent_tensors'], full_tensor_name)
+        'gtp_spec':gtp_spec,
+        'operation_str':operation_str
     } )
 
 
 def update_Z_alpha(gctf_model, update_rules, ltn):
     # { '=', obj.Z_alpha(alpha), ['obj.config.tfmodel.Z_alpha(' num2str(alpha) ').data .* obj.config.tfmodel.d1_alpha(' num2str(alpha) ').data ./ obj.config.tfmodel.d2_alpha('  num2str(alpha) ').data'] };
+    print ('update_Z_alpha running with ltn %s' %ltn)
     rule = {
         'operation_type':'hadamard',
         'output':ltn,
@@ -242,7 +258,8 @@ def update_Z_alpha(gctf_model, update_rules, ltn):
                 {'data':'gtp_d2_alpha_'+ltn+'_v_'+otn},
             )
 
-        update_rules.append(rule)
+    rule = genhadamard(rule)
+    update_rules.append(rule)
 
 
 def gen_update_rules(spark, gctf_model):
@@ -266,6 +283,7 @@ def gen_update_rules(spark, gctf_model):
 
 
     latent_tensor_names = list(latent_tensor_names)
+    print('latent_tensor_names %s' %latent_tensor_names)
     for ltn in latent_tensor_names:
         generate_spark_tensor(spark, gctf_model['tensors'], gctf_model['config']['cardinalities'], 'gtp_d1_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
         generate_spark_tensor(spark, gctf_model['tensors'], gctf_model['config']['cardinalities'], 'gtp_d2_delta_'+ltn, gctf_model['tensors'][ltn]['indices'])
@@ -284,15 +302,19 @@ def gen_update_rules(spark, gctf_model):
             tensor['numel'] *= gctf_model['config']['cardinalities'][tensor_index_name]
 
     update_rules = []
+
     # update each Z_alpha
     for ltn in latent_tensor_names:
         # update each X_hat
+        for factorization in gctf_model['config']['factorizations']:
+            observed_tensor_name = factorization['observed_tensor']
+            observed_tensor_xhat_name = 'gtp_hat_'+observed_tensor_name
+            update_xhat(gctf_model, update_rules, observed_tensor_xhat_name, factorization)
+
         for factorization_index, factorization in enumerate(gctf_model['config']['factorizations']):
             observed_tensor_name = factorization['observed_tensor']
             observed_tensor_xhat_name = 'gtp_hat_'+observed_tensor_name
 
-            update_xhat(gctf_model, update_rules, observed_tensor_xhat_name, factorization)
-            
             # generate update rules for this Z_alpha if Z_alpha appears in factorization of X_v
             if ltn in factorization['latent_tensors']:
                 other_Z_alpha_tensors = copy.deepcopy(latent_tensor_names)
@@ -307,6 +329,7 @@ def gen_update_rules(spark, gctf_model):
                 update_d2_alpha(update_rules, ltn, factorization_index, factorization)
 
         # update Z_alpha with d1/d2
+        print ('call update_Z_alpha with ltn %s' %ltn)
         update_Z_alpha(gctf_model, update_rules, ltn)
 
     return update_rules
@@ -320,7 +343,7 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p, epoch_index, factor
 
     # faster equation for beta divergence
     if p == 1:
-        operation = {
+        operation = genhadamard({
             'operation_type':'hadamard',
             'output':'gtp_beta_divergence',
             'input':{
@@ -380,7 +403,7 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p, epoch_index, factor
                     }
                 ]
             }
-        }
+        })
 
     else:
         raise Exception('other p not implemented')
@@ -465,7 +488,7 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p, epoch_index, factor
     # }
 
 
-    hadamard_df = hadamard(spark, all_tensors_config, operation, output_type='value') #, debug=True)
+    hadamard_df = hadamard(spark, all_tensors_config, operation, output_type='value', debug=DEBUG) #, debug=True)
     #print('was1 %s' %(hadamard_df.collect()) )
     #print('was2 %s' %hadamard_df.groupBy().sum('value'))
     #print('was3 %s' %hadamard_df.groupBy().sum('value').collect())
@@ -478,9 +501,18 @@ def get_beta_divergence(spark, all_tensors_config, x, mu, p, epoch_index, factor
 def calculate_divergence(spark, gctf_model, epoch_index):
     for factorization_index, factorization in enumerate(gctf_model['config']['factorizations']):
         dv = get_beta_divergence(spark, gctf_model['tensors'], factorization['observed_tensor'], 'gtp_hat_'+factorization['observed_tensor'], factorization['p'], epoch_index, factorization_index)
+        if len(factorization['divergence_values']):
+            assert dv < factorization['divergence_values'][-1], 'divergence values must monotonically decrease but found increasing value %s previous values %s' %(dv, factorization['divergence_values'])
+
         factorization['divergence_values'].append( dv )
         print('calculate_divergence: factorization_index %s divergence_values %s' %(factorization_index, factorization['divergence_values']))
     # TODO: add assertion for divergence value reduction
+
+
+def print_update_rules(update_rules):
+    print('update rules strings')
+    for rule in update_rules:
+        print('%s\n' %rule['operation_str'])
 
 
 def gctf(spark, gctf_model, iteration_num):
@@ -489,19 +521,22 @@ def gctf(spark, gctf_model, iteration_num):
     json.dump( update_rules, fp, indent=4, sort_keys=True, cls=ComplexEncoder )
     fp.close()
 
+    print_update_rules(update_rules)
+
     for factorization in gctf_model['config']['factorizations']:
         factorization['divergence_values'] = []
 
+    # TODO: test without checkpoints, caching, repartitioning
     for epoch_index in range(iteration_num):
         for update_rule in update_rules:
             if update_rule['operation_type'] == 'gtp':
-                gtp(spark, update_rule['gtp_spec'], gctf_model, debug=False)
+                gtp(spark, update_rule['gtp_spec'], gctf_model, debug=DEBUG)
                 gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'] = gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'].repartition(58)
                 gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'].cache()
                 gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'].localCheckpoint()
                 gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'] = getCachedDataFrame(spark, gctf_model['tensors'][ update_rule['gtp_spec']['config']['output'] ]['df'])
             elif update_rule['operation_type'] == 'hadamard':
-                hadamard(spark, gctf_model['tensors'], update_rule, debug=False)
+                hadamard(spark, gctf_model['tensors'], update_rule, debug=DEBUG)
                 gctf_model['tensors'][ update_rule['output'] ]['df'] = gctf_model['tensors'][ update_rule['output'] ]['df'].repartition(58)
                 gctf_model['tensors'][ update_rule['output'] ]['df'].cache()
                 gctf_model['tensors'][ update_rule['output'] ]['df'].localCheckpoint()
@@ -526,13 +561,14 @@ if __name__ == '__main__':
                     'latent_tensors' : [ 'gctf_test_Z1', 'gctf_test_Z2' ],
                     'p' : 1,
                     'phi' : 1
-                },
-                {
-                    'observed_tensor' : 'gctf_test_X2',
-                    'latent_tensors' : [ 'gctf_test_Z1', 'gctf_test_Z3' ],
-                    'p' : 1,
-                    'phi' : 1
                 }
+                # ,
+                # {
+                #     'observed_tensor' : 'gctf_test_X2',
+                #     'latent_tensors' : [ 'gctf_test_Z1', 'gctf_test_Z3' ],
+                #     'p' : 1,
+                #     'phi' : 1
+                # }
             ]
         },
         'tensors' : {}

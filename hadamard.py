@@ -124,8 +124,15 @@ def process_operation(spark, all_tensors_config, input_spec, level=0, debug=Fals
         print('hadamard input_spec %s level %s output_de %s values %s' %(json.dumps( input_spec, indent=4, sort_keys=True, cls=ComplexEncoder ), level,output_de, output_values))
 
         for row in output_values:
+            bad = False
             if row['value'] is None:
                 print( 'found None value in output in row %s printing input tensor values' %str(row))
+                bad = True
+            if math.isnan(row['value']):
+                print( 'found NaN value in output in row %s printing input tensor values' %str(row))
+                bad = True
+
+            if bad:
                 print(all_tensors_config)
                 for tensor_name in all_tensors_config:
                     print('tensor %s values %s' %(tensor_name, all_tensors_config[tensor_name]['df'].collect()))
@@ -219,6 +226,7 @@ if __name__ == '__main__':
 
     # load hdfs data into spark
     spark = SparkSession.builder.appName("gtp").getOrCreate()
+    spark.sparkContext.setCheckpointDir('/gctf_data/spark_checkpoints')
     for tensor_name in tensors:
         if 'local_filename' in tensors[tensor_name]:
             tensors[tensor_name]['hdfs_filename'] = '/'.join([gctf_data_path, tensors[tensor_name]['local_filename'].split('/')[-1]])

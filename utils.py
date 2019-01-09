@@ -198,7 +198,7 @@ def gengtp(gctf_model, output_tensor_name, input_tensor_names, full_tensor_name_
         },
         'tensors' : {
             output_tensor_name : gctf_model['tensors'][output_tensor_name]
-        }
+        },
     }
 
     if full_tensor_name_str:
@@ -207,12 +207,49 @@ def gengtp(gctf_model, output_tensor_name, input_tensor_names, full_tensor_name_
     for itn in input_tensor_names:
         gtp_spec['tensors'][itn] = gctf_model['tensors'][itn]
 
-    return gtp_spec
+    gtp_str = '%s <- gtp(%s)' % (output_tensor_name, ', '.join(input_tensor_names))
+    return (gtp_spec, gtp_str)
+
+
+def get_hadamard_pre_processor_str(pre_processor_str):
+    if pre_processor_str['operator'] == 'pow':
+        return 'pow%s' %pre_processor_str['argument']
+    elif pre_processor_str['operator'] == 'log':
+        return 'log'
+    else:
+        raise Exception('unknown pre_processor %s' %pre_processor_str)
+
+
+def get_hadamard_str(input_spec, output_name, level=0):
+    if level == 0:
+        rule_str = '%s <- ' %output_name
+    else:
+        rule_str = ''
+
+    for argument_index, argument in enumerate(input_spec['arguments']):
+        if 'suboperation' in argument:
+            rule_str += ' (%s) ' %get_hadamard_str(argument['suboperation'], output_name, level+1)
+        else:
+            if 'pre_processor' in argument:
+                rule_str += get_hadamard_pre_processor_str(argument['pre_processor'])
+
+            rule_str += ' %s ' %(argument['data'])
+            if argument_index < len(input_spec)-1:
+                rule_str += '%s ' %(json.dumps( input_spec['combination_operator'], cls=ComplexEncoder ).strip('"'))
+
+    return rule_str
+
+
+def genhadamard(rule):
+    rule['operation_str'] = get_hadamard_str(rule['input'], rule['output'])
+    return rule
+
 
 def create_full_tensor(spark_session, all_tensors_config, all_cardinalities):
     print('gtp: creating full tensor with indices %s' %all_cardinalities)
     generate_hdfs_tensor_data(all_tensors_config, all_cardinalities, full_tensor_name, all_cardinalities.keys())
     all_tensors_config[full_tensor_name]['df'] = read_tensor_data_from_hdfs(spark_session, all_tensors_config, full_tensor_name, gctf_data_path)
+
 
 def generate_spark_tensor(spark_session, all_tensors_config, all_cardinalities, new_tensor_name, new_tensor_indices):
     generate_hdfs_tensor_data(all_tensors_config, all_cardinalities, new_tensor_name, new_tensor_indices)
